@@ -219,7 +219,7 @@ WITH roles AS MATERIALIZED (
 SELECT p.id, p.workspace_id, p.parent_id, p.title, p.icon, p.cover, p.position, p.visibility, p.created_by, p.last_edited_by, p.archived_at, p.created_at, p.updated_at, p.title_tsv, r.role_rank, (pr.page_id IS NOT NULL)::boolean AS parent_visible,
        (ts_rank_cd(p.title_tsv, q.query, 32) + COALESCE(ts_rank_cd(pc.body_tsv, q.query, 32), 0))::float8 AS rank,
        ts_headline('simple', COALESCE(NULLIF(pc.plaintext, ''), p.title), q.query,
-                   'MaxFragments=2,MaxWords=20,MinWords=5') AS snippet
+                   'MaxFragments=2,MaxWords=20,MinWords=5,StartSel=' || chr(57344) || ',StopSel=' || chr(57345)) AS snippet
 FROM pages p
 JOIN roles r ON r.page_id = p.id
 LEFT JOIN roles pr ON pr.page_id = p.parent_id

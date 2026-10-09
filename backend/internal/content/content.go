@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"strings"
 	"time"
@@ -262,7 +263,7 @@ func (s *Service) Search(ctx context.Context, userID, workspaceID uuid.UUID, que
 				Rank: float32(r.Rank),
 			}
 			if len(r.Snippet) > 0 {
-				snippet := string(r.Snippet)
+				snippet := MarkSnippet(string(r.Snippet))
 				res.Snippet = &snippet
 			}
 			out = append(out, res)
@@ -295,3 +296,18 @@ func buildPrefixTsquery(q string) string {
 }
 
 func utf8Len(s string) int { return len([]rune(s)) }
+
+// Sentinels ts_headline wraps matches in (private-use code points, see queries/content.sql).
+const (
+	hlStart = "\ue000"
+	hlStop  = "\ue001"
+)
+
+// MarkSnippet turns a ts_headline result into the API's snippet format (conventions §9, openapi
+// SearchResult.snippet): the text is HTML-escaped and matches are wrapped in <mark>…</mark>, so clients
+// may render it as HTML safely.
+func MarkSnippet(s string) string {
+	s = html.EscapeString(s)
+	s = strings.ReplaceAll(s, hlStart, "<mark>")
+	return strings.ReplaceAll(s, hlStop, "</mark>")
+}
