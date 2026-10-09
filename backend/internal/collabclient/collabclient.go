@@ -117,7 +117,55 @@ func (c *Client) DisconnectSync(ctx context.Context, req DisconnectRequest) erro
 // Wait blocks until in-flight disconnects finished (graceful shutdown and tests).
 func (c *Client) Wait() { c.wg.Wait() }
 
+// ImportRequest asks collab to convert Markdown into a Y.Doc for a page (api/internal.yaml).
+type ImportRequest struct {
+	PageID   uuid.UUID
+	Markdown string
+	EditorID uuid.UUID
+}
+
+// Importer is what the transfer service depends on (tests substitute a recorder).
+type Importer interface {
+	// ImportMarkdown converts and persists the document, then pushes extracted content back. When
+	// collab is not configured it is a no-op.
+	ImportMarkdown(ctx context.Context, req ImportRequest) error
+}
+
+// ImportMarkdown calls POST {COLLAB_INTERNAL_URL}/internal/import-markdown.
+func (c *Client) ImportMarkdown(ctx context.Context, req ImportRequest) error {
+	if !c.Enabled() {
+		return nil
+	}
+	body := map[string]string{"pageId": req.PageID.String(), "markdown": req.Markdown}
+	if req.EditorID != uuid.Nil {
+		body["editorId"] = req.EditorID.String()
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/import-markdown", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("collab responded %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Noop is a Disconnecter that does nothing.
 type Noop struct{}
 
 func (Noop) Disconnect(DisconnectRequest) {}
+
+// ImportMarkdown implements Importer as a no-op (collab not configured).
+func (Noop) ImportMarkdown(context.Context, ImportRequest) error { return nil }

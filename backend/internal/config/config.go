@@ -53,6 +53,7 @@ type Config struct {
 
 	DataDir     string
 	MaxUploadMB int
+	MaxImportMB int
 	LogLevel    slog.Level
 
 	OIDC OIDC
@@ -128,6 +129,9 @@ func FromEnv(getenv func(string) string) (*Config, error) {
 
 	if c.MaxUploadMB, err = strconv.Atoi(get("MAX_UPLOAD_MB", "50")); err != nil || c.MaxUploadMB < 1 {
 		problems = append(problems, "MAX_UPLOAD_MB must be a positive integer")
+	}
+	if c.MaxImportMB, err = strconv.Atoi(get("MAX_IMPORT_MB", "500")); err != nil || c.MaxImportMB < 1 {
+		problems = append(problems, "MAX_IMPORT_MB must be a positive integer")
 	}
 	if err := c.LogLevel.UnmarshalText([]byte(get("LOG_LEVEL", "info"))); err != nil {
 		problems = append(problems, "LOG_LEVEL must be debug, info, warn or error")

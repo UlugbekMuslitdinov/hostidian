@@ -557,13 +557,10 @@ func TestProtectedAndPublicRoutes(t *testing.T) {
 	// public routes do not
 	anon.mustStatus(anon.get("/instance/info"), 200)
 
-	// operations wave 2 has not implemented answer 501 with the envelope (after auth)
+	// wave-2 endpoints are implemented and still require a session
 	pid := c.page(ws, "p", nil)
 	r := c.get("/pages/" + pid.String() + "/content")
-	c.mustStatus(r, 501)
-	if r.errCode() != "internal" {
-		t.Fatalf("501 envelope = %s", r.body)
-	}
+	c.mustStatus(r, 200)
 	anon.mustStatus(anon.get("/pages/"+pid.String()+"/content"), 401)
 
 	// unknown API paths and malformed input

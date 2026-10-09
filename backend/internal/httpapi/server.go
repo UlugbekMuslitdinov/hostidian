@@ -39,6 +39,9 @@ type Server struct {
 
 	extMu sync.Mutex
 	ext   map[string]any
+	// extOnce guards each lazily-built service so a factory may call Ext for a *different* key (e.g. the
+	// shares service embeds the files service) without deadlocking on extMu.
+	extOnce map[string]*sync.Once
 }
 
 // Options customise NewServer (tests inject a fast hasher, a clock, a fake IdP client).
@@ -55,7 +58,7 @@ func NewServer(d *deps.Deps, o Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{Deps: d, operations: ops, ext: map[string]any{}}
+	s := &Server{Deps: d, operations: ops, ext: map[string]any{}, extOnce: map[string]*sync.Once{}}
 	s.Auth = auth.NewService(auth.Options{
 		Config: d.Config, Pool: d.Pool, Broker: d.Broker, Collab: d.Collab, Hasher: o.Hasher, Limiter: o.Limiter,
 		Log: d.Log, Now: o.Now,
@@ -71,16 +74,32 @@ func NewServer(d *deps.Deps, o Options) (*Server, error) {
 	return s, nil
 }
 
-// Ext returns the lazily built, cached extension value for key (wave-2 services). init runs at
-// most once.
+// Ext returns the lazily built, cached extension value for key (wave-2 services). init runs at most
+// once, even under concurrent requests. Building a service may itself call Ext for another key (the
+// shares and transfer services embed the files service); init therefore runs outside extMu.
 func Ext[T any](s *Server, key string, init func() T) T {
 	s.extMu.Lock()
-	defer s.extMu.Unlock()
 	if v, ok := s.ext[key]; ok {
+		s.extMu.Unlock()
 		return v.(T)
 	}
-	v := init()
-	s.ext[key] = v
+	once, ok := s.extOnce[key]
+	if !ok {
+		once = &sync.Once{}
+		s.extOnce[key] = once
+	}
+	s.extMu.Unlock()
+
+	once.Do(func() {
+		v := init()
+		s.extMu.Lock()
+		s.ext[key] = v
+		s.extMu.Unlock()
+	})
+
+	s.extMu.Lock()
+	v := s.ext[key].(T)
+	s.extMu.Unlock()
 	return v
 }
 
