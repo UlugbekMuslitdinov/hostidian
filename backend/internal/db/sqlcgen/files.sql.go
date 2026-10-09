@@ -11,6 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteAttachmentsByIDs = `-- name: DeleteAttachmentsByIDs :exec
+DELETE FROM attachments WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) DeleteAttachmentsByIDs(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAttachmentsByIDs, ids)
+	return err
+}
+
 const getAttachment = `-- name: GetAttachment :one
 SELECT id, workspace_id, page_id, uploaded_by, filename, content_type, size_bytes, storage_key, created_at FROM attachments WHERE id = $1
 `
@@ -34,12 +43,13 @@ func (q *Queries) GetAttachment(ctx context.Context, id uuid.UUID) (Attachment, 
 
 const insertAttachment = `-- name: InsertAttachment :one
 
-INSERT INTO attachments (workspace_id, page_id, uploaded_by, filename, content_type, size_bytes, storage_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO attachments (id, workspace_id, page_id, uploaded_by, filename, content_type, size_bytes, storage_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, workspace_id, page_id, uploaded_by, filename, content_type, size_bytes, storage_key, created_at
 `
 
 type InsertAttachmentParams struct {
+	ID          uuid.UUID
 	WorkspaceID uuid.UUID
 	PageID      *uuid.UUID
 	UploadedBy  *uuid.UUID
@@ -52,6 +62,7 @@ type InsertAttachmentParams struct {
 // Files / attachments (conventions §7). Attachment ids are random UUIDv4 (capability-style URLs).
 func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentParams) (Attachment, error) {
 	row := q.db.QueryRow(ctx, insertAttachment,
+		arg.ID,
 		arg.WorkspaceID,
 		arg.PageID,
 		arg.UploadedBy,
@@ -99,6 +110,52 @@ func (q *Queries) ListAttachmentsByIDs(ctx context.Context, ids []uuid.UUID) ([]
 			&i.StorageKey,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnreferencedAttachments = `-- name: ListUnreferencedAttachments :many
+SELECT a.id, a.storage_key
+FROM attachments a
+WHERE a.created_at < now() - make_interval(secs => $1::double precision)
+  AND NOT EXISTS (
+        SELECT 1 FROM page_content pc JOIN pages p ON p.id = pc.page_id
+        WHERE p.workspace_id = a.workspace_id
+          AND (position(a.id::text IN pc.markdown) > 0 OR position(a.id::text IN pc.blocks::text) > 0))
+  AND NOT EXISTS (
+        SELECT 1 FROM pages p
+        WHERE p.workspace_id = a.workspace_id AND p.cover = '/api/files/' || a.id::text)
+ORDER BY a.created_at
+LIMIT $2::int
+`
+
+type ListUnreferencedAttachmentsParams struct {
+	MinAgeSeconds float64
+	Batch         int32
+}
+
+type ListUnreferencedAttachmentsRow struct {
+	ID         uuid.UUID
+	StorageKey string
+}
+
+// Attachments no page references any more (neither in its markdown, its lossless block JSON, nor as a cover).
+func (q *Queries) ListUnreferencedAttachments(ctx context.Context, arg ListUnreferencedAttachmentsParams) ([]ListUnreferencedAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, listUnreferencedAttachments, arg.MinAgeSeconds, arg.Batch)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnreferencedAttachmentsRow{}
+	for rows.Next() {
+		var i ListUnreferencedAttachmentsRow
+		if err := rows.Scan(&i.ID, &i.StorageKey); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

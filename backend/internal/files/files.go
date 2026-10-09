@@ -132,7 +132,7 @@ func (s *Service) Upload(ctx context.Context, userID, workspaceID uuid.UUID, pag
 		pid = pageID
 	}
 	att, err := s.q.InsertAttachment(ctx, sqlcgen.InsertAttachmentParams{
-		WorkspaceID: workspaceID, PageID: pid, UploadedBy: &userID,
+		ID: id, WorkspaceID: workspaceID, PageID: pid, UploadedBy: &userID,
 		Filename: sanitizeFilename(fh.Filename), ContentType: contentType, SizeBytes: size, StorageKey: key,
 	})
 	if err != nil {
@@ -169,7 +169,7 @@ func (s *Service) StoreBytes(ctx context.Context, workspaceID, userID uuid.UUID,
 		head = head[:512]
 	}
 	att, err := s.q.InsertAttachment(ctx, sqlcgen.InsertAttachmentParams{
-		WorkspaceID: workspaceID, PageID: pageID, UploadedBy: &userID,
+		ID: id, WorkspaceID: workspaceID, PageID: pageID, UploadedBy: &userID,
 		Filename: sanitizeFilename(filename), ContentType: http.DetectContentType(head),
 		SizeBytes: int64(len(data)), StorageKey: key,
 	})

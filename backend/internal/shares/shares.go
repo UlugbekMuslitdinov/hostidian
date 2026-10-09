@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -211,6 +212,25 @@ func (s *Service) buildPublicPage(ctx context.Context, link sqlcgen.ShareLink, p
 			blocks = []map[string]any{}
 		}
 	}
+	// Page links may only point inside the shared subtree; everything else is replaced so the titles of
+	// unshared pages never leak through a public page.
+	allowed := map[string]bool{strings.ToLower(link.PageID.String()): true}
+	var subtree []sqlcgen.ListPublicSubtreeRow
+	if link.IncludeSubpages {
+		rows, err := s.q.ListPublicSubtree(ctx, link.PageID)
+		if err != nil {
+			return gen.PublicPage{}, fmt.Errorf("public subtree: %w", err)
+		}
+		subtree = rows
+		for _, r := range rows {
+			allowed[strings.ToLower(r.ID.String())] = true
+		}
+	}
+	for i := range blocks {
+		if b, ok := sanitizePageLinks(map[string]any(blocks[i]), allowed).(map[string]any); ok {
+			blocks[i] = b
+		}
+	}
 	out := gen.PublicPage{
 		Page:            meta(data.ID, data.ParentID, data.Title, data.Icon, data.Cover),
 		Blocks:          blocks,
@@ -220,11 +240,7 @@ func (s *Service) buildPublicPage(ctx context.Context, link sqlcgen.ShareLink, p
 		Tree:            []gen.PublicPageMeta{},
 	}
 	if link.IncludeSubpages {
-		rows, err := s.q.ListPublicSubtree(ctx, link.PageID)
-		if err != nil {
-			return gen.PublicPage{}, fmt.Errorf("public subtree: %w", err)
-		}
-		for _, r := range rows {
+		for _, r := range subtree {
 			out.Tree = append(out.Tree, meta(r.ID, r.ParentID, r.Title, r.Icon, r.Cover))
 		}
 	} else {

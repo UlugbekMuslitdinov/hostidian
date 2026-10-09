@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,6 +21,11 @@ func filesService(s *Server) *files.Service {
 			Q: s.Deps.Q, Log: s.Log, DataDir: s.Config.DataDir, MaxUploadMB: s.Config.MaxUploadMB,
 		})
 	})
+}
+
+// SweepFiles removes unreferenced attachments older than minAge and orphaned files on disk (janitor).
+func (s *Server) SweepFiles(ctx context.Context, minAge time.Duration) (int, error) {
+	return filesService(s).Sweep(ctx, minAge)
 }
 
 // UploadFile: POST /workspaces/{workspaceId}/files

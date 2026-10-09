@@ -89,6 +89,8 @@ Rules: (1) **never send an event about a page the subscriber cannot view** (the 
 ## 7. Files / attachments
 
 - Stored on local disk under `$DATA_DIR/files/<aa>/<uuid>` (`aa` = first two chars of the id); `attachments.storage_key` holds the relative path. Max size `MAX_UPLOAD_MB` (default 50) enforced with `http.MaxBytesReader`.
+- The attachment id equals the file name under `files/<aa>/`. An hourly janitor deletes attachments (row + file) that no page references (markdown, block JSON or cover) and files with no row, once they are older than 24 h.
+- Public pages: page links to pages outside the shared subtree are replaced by the text "unavailable page" server-side, so titles of unshared pages never leak.
 - Referenced in documents as `/api/files/<attachmentId>` (relative URL, no query). Public pages use `/api/public/<token>/files/<attachmentId>`.
 - Download access: caller must be a non-guest member of the attachment's workspace, **or** (guest) have ≥ `view` on `attachments.page_id`. Attachment ids are random UUIDv4 (capability-style); this is intentional so duplicated/moved pages keep working.
 - Serve with `X-Content-Type-Options: nosniff`; `Content-Disposition: inline` only for `image/png|jpeg|gif|webp|avif`, `video/mp4|webm`, `audio/*`, `application/pdf`; everything else (incl. SVG, HTML) is `attachment`. Never trust the client content type — sniff with `http.DetectContentType` and store the sniffed type for inline decisions. Sanitize filenames.

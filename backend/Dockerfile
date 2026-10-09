@@ -28,49 +28,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags "-s -w -X hostidian/backend/internal/version.Version=${VERSION}" \
     -o /out/hostidian ./cmd/hostidian
 
-# Tiny HEALTHCHECK helper: the final image is distroless (no shell, no wget/curl). It reads API_ADDR
-# (default :8080) and exits 0 only when GET /healthz answers 200.
-COPY <<EOF /healthcheck/main.go
-package main
-
-import (
-	"net"
-	"net/http"
-	"os"
-	"time"
-)
-
-func main() {
-	addr := os.Getenv("API_ADDR")
-	if addr == "" {
-		addr = ":8080"
-	}
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		os.Exit(1)
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		host = "127.0.0.1"
-	}
-	url := "http://" + net.JoinHostPort(host, port) + "/healthz"
-	if len(os.Args) > 1 {
-		url = os.Args[1]
-	}
-	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		os.Exit(1)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		os.Exit(1)
-	}
-}
-EOF
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    cd /healthcheck && GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w" -o /out/healthcheck main.go
-
 # Data directory owned by the distroless "nonroot" user (uid/gid 65532). Docker copies this ownership
 # into a fresh named volume on first use.
 RUN mkdir -p /out/data
@@ -88,7 +45,6 @@ LABEL org.opencontainers.image.title="hostidian-api" \
       org.opencontainers.image.vendor="Hostidian"
 
 COPY --from=build /out/hostidian /usr/local/bin/hostidian
-COPY --from=build /out/healthcheck /usr/local/bin/healthcheck
 COPY --from=build --chown=65532:65532 /out/data /data
 
 ENV DATA_DIR=/data \
@@ -100,6 +56,6 @@ USER 65532:65532
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-    CMD ["/usr/local/bin/healthcheck"]
+    CMD ["/usr/local/bin/hostidian", "healthcheck"]
 
 ENTRYPOINT ["/usr/local/bin/hostidian"]

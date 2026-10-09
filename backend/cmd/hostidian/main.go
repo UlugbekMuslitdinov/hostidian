@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +33,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		return healthcheck(os.Args[2:])
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -156,6 +160,42 @@ func janitor(ctx context.Context, s *httpapi.Server, log *slog.Logger) {
 			} else if n > 0 {
 				log.Info("deleted expired sessions", "count", n)
 			}
+			if n, err := s.SweepFiles(ctx, 24*time.Hour); err != nil {
+				log.Warn("file sweep", "err", err)
+			} else if n > 0 {
+				log.Info("removed unreferenced files", "count", n)
+			}
 		}
 	}
+}
+
+// healthcheck implements `hostidian healthcheck [url]` for container HEALTHCHECKs (the final image is
+// distroless: no shell, curl or wget). It reads only API_ADDR (default :8080) and succeeds when GET /healthz
+// answers 200; it deliberately does not load or validate the rest of the configuration.
+func healthcheck(args []string) error {
+	addr := os.Getenv("API_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid API_ADDR %q: %w", addr, err)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	url := "http://" + net.JoinHostPort(host, port) + "/healthz"
+	if len(args) > 0 {
+		url = args[0]
+	}
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s answered %d", url, resp.StatusCode)
+	}
+	return nil
 }
