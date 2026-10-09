@@ -1,0 +1,17 @@
+{
+  "name": "hostidian",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@9.10.0",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "gen:api": "pnpm -F @hostidian/api-types gen",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build"
+  }
+}

@@ -1,0 +1,1784 @@
+openapi: 3.0.3
+info:
+  title: Hostidian API
+  version: 0.1.0
+  description: |
+    Public REST API of Hostidian. Served under `/api`. See `docs/conventions.md` for the
+    cross-cutting rules (errors, permissions, events, markdown format) — they are part of this contract.
+servers:
+  - url: /api
+tags:
+  - name: instance
+  - name: auth
+  - name: admin
+  - name: workspaces
+  - name: pages
+  - name: content
+  - name: files
+  - name: comments
+  - name: shares
+  - name: public
+  - name: transfer
+  - name: events
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ------------------------------------------------------------------ instance / setup
+  /instance/info:
+    get:
+      tags: [instance]
+      operationId: getInstanceInfo
+      summary: Public instance info (needs setup? signup policy? OIDC?)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstanceInfo' }
+
+  /setup:
+    post:
+      tags: [instance]
+      operationId: setupInstance
+      summary: Create the first user (instance admin) and a default workspace. 409 once any user exists.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 200 }
+                workspaceName: { type: string, minLength: 1, maxLength: 100, default: My Workspace }
+      responses:
+        '201':
+          description: Created; session cookie set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  # ------------------------------------------------------------------ auth
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: OK; session cookie set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses:
+        '204': { description: Logged out; cookie cleared }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      responses:
+        '200':
+          description: Current user and workspace memberships
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Register with an invite token, or without one if open signup is enabled
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 200 }
+                inviteToken: { type: string }
+      responses:
+        '201':
+          description: Created; session cookie set; invite (if any) accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/invites/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [auth]
+      operationId: getInviteInfo
+      summary: Look up an invite (public) to render the sign-up page
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteInfo' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [auth]
+      operationId: acceptInvite
+      summary: Accept an invite as the already-logged-in user (joins the workspace)
+      responses:
+        '200':
+          description: Joined
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/oidc/login:
+    get:
+      tags: [auth]
+      operationId: oidcLogin
+      summary: Redirects (302) to the OIDC provider. 404 if OIDC is not configured.
+      security: []
+      parameters:
+        - name: invite
+          in: query
+          schema: { type: string }
+        - name: next
+          in: query
+          description: Relative path to return to after login
+          schema: { type: string }
+      responses:
+        '302': { description: Redirect to provider }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /auth/oidc/callback:
+    get:
+      tags: [auth]
+      operationId: oidcCallback
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        '302': { description: Redirect to the app (session cookie set) or to /login?error=… }
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmPasswordReset
+      summary: Set a new password using an admin-issued reset token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 10, maxLength: 200 }
+      responses:
+        '204': { description: Password changed; all sessions of the user revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /auth/profile:
+    patch:
+      tags: [auth]
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                avatarColor: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /auth/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                currentPassword: { type: string, description: Required unless the account has no password yet (OIDC-only) }
+                newPassword: { type: string, minLength: 10, maxLength: 200 }
+      responses:
+        '204': { description: Changed; other sessions revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /auth/sessions:
+    get:
+      tags: [auth]
+      operationId: listSessions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Session' }
+
+  /auth/sessions/{sessionId}:
+    parameters:
+      - { $ref: '#/components/parameters/SessionId' }
+    delete:
+      tags: [auth]
+      operationId: revokeSession
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ admin (instance admins only)
+  /admin/users:
+    get:
+      tags: [admin]
+      operationId: adminListUsers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AdminUser' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/UserId' }
+    patch:
+      tags: [admin]
+      operationId: adminUpdateUser
+      summary: Disable/enable a user or change instance-admin flag (cannot demote/disable the last admin or yourself)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                disabled: { type: boolean }
+                isInstanceAdmin: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/users/{userId}/reset-link:
+    parameters:
+      - { $ref: '#/components/parameters/UserId' }
+    post:
+      tags: [admin]
+      operationId: adminCreateResetLink
+      summary: Create a one-time password-reset link (valid 24h) to hand to the user
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url: { type: string, description: Absolute URL built from PUBLIC_URL }
+                  expiresAt: { type: string, format: date-time }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/settings:
+    get:
+      tags: [admin]
+      operationId: adminGetSettings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstanceSettings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [admin]
+      operationId: adminUpdateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instanceName: { type: string, minLength: 1, maxLength: 100 }
+                allowOpenSignup: { type: boolean }
+                allowWorkspaceCreation: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstanceSettings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ------------------------------------------------------------------ workspaces
+  /workspaces:
+    get:
+      tags: [workspaces]
+      operationId: listWorkspaces
+      responses:
+        '200':
+          description: Workspaces the caller belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WorkspaceMembership' }
+    post:
+      tags: [workspaces]
+      operationId: createWorkspace
+      summary: Allowed for instance admins, and for everyone when allowWorkspaceCreation is true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 60, description: Generated from name when omitted }
+                icon: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Created (caller becomes owner)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceMembership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /workspaces/{workspaceId}:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [workspaces]
+      operationId: getWorkspace
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceMembership' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [workspaces]
+      operationId: updateWorkspace
+      summary: Owner/admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 60 }
+                icon: { type: string, nullable: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceMembership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [workspaces]
+      operationId: deleteWorkspace
+      summary: Owner only. Cascades all pages and files.
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /workspaces/{workspaceId}/members:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [workspaces]
+      operationId: listMembers
+      responses:
+        '200':
+          description: OK (guests are listed to owners/admins only)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+
+  /workspaces/{workspaceId}/members/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+      - { $ref: '#/components/parameters/UserId' }
+    patch:
+      tags: [workspaces]
+      operationId: updateMember
+      summary: Change role. Owner/admin only; only owners can grant/revoke owner; cannot remove the last owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/WorkspaceRole' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [workspaces]
+      operationId: removeMember
+      summary: Remove a member (or leave, when userId is the caller). Cannot remove the last owner.
+      responses:
+        '204': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /workspaces/{workspaceId}/invites:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [workspaces]
+      operationId: listInvites
+      summary: Owner/admin only. Pending (unused, unexpired) invites.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Invite' }
+    post:
+      tags: [workspaces]
+      operationId: createInvite
+      summary: Owner/admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/InviteRole' }
+                email: { type: string, format: email, description: Optional; restricts the invite to this email }
+                expiresInDays: { type: integer, minimum: 1, maximum: 90, default: 7 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invite' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /workspaces/{workspaceId}/invites/{inviteId}:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+      - name: inviteId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [workspaces]
+      operationId: revokeInvite
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ pages
+  /workspaces/{workspaceId}/pages:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [pages]
+      operationId: listPages
+      summary: Flat list of every non-archived page the caller can view (client builds the tree)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PageSummary' }
+    post:
+      tags: [pages]
+      operationId: createPage
+      summary: "Create a page. `id` may be a client-generated UUIDv7 (idempotent: same id + same creator returns 200 with the existing page)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                parentId: { type: string, format: uuid, nullable: true }
+                title: { type: string, maxLength: 500, default: '' }
+                icon: { type: string, nullable: true }
+                visibility: { $ref: '#/components/schemas/Visibility' }
+                afterId: { type: string, format: uuid, description: Place after this sibling }
+                beforeId: { type: string, format: uuid, description: Place before this sibling }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '200':
+          description: Already existed (idempotent retry)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /workspaces/{workspaceId}/trash:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [pages]
+      operationId: listTrash
+      summary: Archived subtree roots the caller has `full` on
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PageSummary' }
+
+  /workspaces/{workspaceId}/favorites:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [pages]
+      operationId: listFavorites
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PageSummary' }
+
+  /workspaces/{workspaceId}/recent:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [pages]
+      operationId: listRecentPages
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 15 } }
+      responses:
+        '200':
+          description: Most recently updated visible pages
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PageSummary' }
+
+  /pages/{pageId}:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [pages]
+      operationId: getPage
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [pages]
+      operationId: updatePage
+      summary: Update title/icon/cover (needs `edit`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 500 }
+                icon: { type: string, nullable: true }
+                cover: { type: string, nullable: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [pages]
+      operationId: purgePage
+      summary: Permanently delete an archived page and its subtree (needs `full`)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /pages/{pageId}/move:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    post:
+      tags: [pages]
+      operationId: movePage
+      summary: Reparent/reorder. Needs `edit` on the page and on the destination parent. Omit afterId/beforeId to append.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId]
+              properties:
+                parentId: { type: string, format: uuid, nullable: true }
+                afterId: { type: string, format: uuid }
+                beforeId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /pages/{pageId}/duplicate:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    post:
+      tags: [pages]
+      operationId: duplicatePage
+      summary: Copy the page (and optionally its subtree) next to the original. Copies page_documents/page_content rows. Needs `view` on source, `edit` on destination.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                includeSubpages: { type: boolean, default: true }
+      responses:
+        '201':
+          description: The new root copy (title suffixed " (copy)")
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/archive:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    post:
+      tags: [pages]
+      operationId: archivePage
+      summary: Move the subtree to trash (needs `full`)
+      responses:
+        '204': { description: Archived }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/restore:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    post:
+      tags: [pages]
+      operationId: restorePage
+      summary: Restore an archived subtree (needs `full`). If the parent is archived/missing, restores to top level.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/favorite:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    put:
+      tags: [pages]
+      operationId: addFavorite
+      responses:
+        '204': { description: Favorited }
+    delete:
+      tags: [pages]
+      operationId: removeFavorite
+      responses:
+        '204': { description: Unfavorited }
+
+  /pages/{pageId}/permissions:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [pages]
+      operationId: getPagePermissions
+      summary: Explicit grants (own + inherited) and visibility. Needs `full`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagePermissions' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [pages]
+      operationId: grantPagePermission
+      summary: |
+        Grant (or change) a user's role on this page. Needs `full`. Identify the user by `userId` or `email`.
+        If the user exists on the instance but is not in the workspace, they are added as `guest`.
+        Unknown email → 404 (UI then offers a guest invite).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                userId: { type: string, format: uuid }
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/PageRole' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagePermissions' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/permissions/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+      - { $ref: '#/components/parameters/UserId' }
+    delete:
+      tags: [pages]
+      operationId: revokePagePermission
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagePermissions' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/visibility:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    put:
+      tags: [pages]
+      operationId: setPageVisibility
+      summary: Root pages only (422 for child pages). Needs `full`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visibility]
+              properties:
+                visibility: { $ref: '#/components/schemas/Visibility' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagePermissions' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /pages/{pageId}/collab-token:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    post:
+      tags: [pages]
+      operationId: createCollabToken
+      summary: Short-lived JWT for the collaboration WebSocket (see conventions §6). Needs `view`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CollabToken' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ content: backlinks / graph / search
+  /pages/{pageId}/content:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [content]
+      operationId: getPageContent
+      summary: Last extracted content (blocks JSON + markdown). May lag the live Y.Doc by a few seconds. Needs `view`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageContent' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/backlinks:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [content]
+      operationId: getBacklinks
+      summary: Visible pages that link to this page
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PageRef' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/graph:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [content]
+      operationId: getGraph
+      summary: Link graph of pages the caller can view (edges only between visible nodes)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Graph' }
+
+  /workspaces/{workspaceId}/search:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [content]
+      operationId: search
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+        - name: mode
+          in: query
+          description: "`full` = title + body FTS with snippets; `title` = fuzzy title match for the quick switcher"
+          schema: { type: string, enum: [full, title], default: full }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SearchResult' }
+
+  # ------------------------------------------------------------------ files
+  /workspaces/{workspaceId}/files:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    post:
+      tags: [files]
+      operationId: uploadFile
+      summary: Upload an image/file (multipart). Needs `edit` on `pageId` when given, else workspace membership (non-guest).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                pageId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attachment' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { description: Too large, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /files/{fileId}:
+    parameters:
+      - { $ref: '#/components/parameters/FileId' }
+    get:
+      tags: [files]
+      operationId: downloadFile
+      summary: Stream a file (access rules in conventions §7). Supports Range and ETag.
+      responses:
+        '200':
+          description: File bytes
+          content:
+            '*/*':
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ comments
+  /pages/{pageId}/comments:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [comments]
+      operationId: listCommentThreads
+      parameters:
+        - { name: includeResolved, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CommentThread' }
+    post:
+      tags: [comments]
+      operationId: createCommentThread
+      summary: Start a thread on a block (needs `comment`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blockId, body]
+              properties:
+                blockId: { type: string, minLength: 1, maxLength: 100 }
+                quote: { type: string, maxLength: 500, default: '' }
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentThread' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /comment-threads/{threadId}/comments:
+    parameters:
+      - { $ref: '#/components/parameters/ThreadId' }
+    post:
+      tags: [comments]
+      operationId: replyToThread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /comment-threads/{threadId}/resolve:
+    parameters:
+      - { $ref: '#/components/parameters/ThreadId' }
+    post:
+      tags: [comments]
+      operationId: resolveThread
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentThread' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /comment-threads/{threadId}/reopen:
+    parameters:
+      - { $ref: '#/components/parameters/ThreadId' }
+    post:
+      tags: [comments]
+      operationId: reopenThread
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentThread' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /comments/{commentId}:
+    parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [comments]
+      operationId: updateComment
+      summary: Author only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [comments]
+      operationId: deleteComment
+      summary: Author or `full` on the page. Deleting the last comment deletes the thread.
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ shares (authenticated management)
+  /pages/{pageId}/shares:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [shares]
+      operationId: listShareLinks
+      summary: Active public links of the page. Needs `full`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ShareLink' }
+    post:
+      tags: [shares]
+      operationId: createShareLink
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                includeSubpages: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareLink' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /shares/{shareId}:
+    parameters:
+      - name: shareId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [shares]
+      operationId: updateShareLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                includeSubpages: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareLink' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [shares]
+      operationId: revokeShareLink
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ public (no session)
+  /public/{token}/page:
+    parameters:
+      - { $ref: '#/components/parameters/ShareToken' }
+    get:
+      tags: [public]
+      operationId: getPublicPage
+      security: []
+      summary: The shared root page (read-only). Never exposes emails or user ids.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /public/{token}/pages/{pageId}:
+    parameters:
+      - { $ref: '#/components/parameters/ShareToken' }
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [public]
+      operationId: getPublicSubpage
+      security: []
+      summary: A descendant of the shared page (only when includeSubpages is true)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /public/{token}/files/{fileId}:
+    parameters:
+      - { $ref: '#/components/parameters/ShareToken' }
+      - { $ref: '#/components/parameters/FileId' }
+    get:
+      tags: [public]
+      operationId: downloadPublicFile
+      security: []
+      summary: File from the shared workspace subtree; same serving rules as /files/{fileId}
+      responses:
+        '200':
+          description: File bytes
+          content:
+            '*/*':
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ import / export
+  /pages/{pageId}/export:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    get:
+      tags: [transfer]
+      operationId: exportPage
+      summary: Zip of the page subtree as Markdown files + attachments (format in conventions §8). Needs `view`; pages the caller can't view are skipped.
+      responses:
+        '200':
+          description: application/zip stream
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/export:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [transfer]
+      operationId: exportWorkspace
+      summary: Zip of all pages the caller can view
+      responses:
+        '200':
+          description: application/zip stream
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+
+  /workspaces/{workspaceId}/import:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    post:
+      tags: [transfer]
+      operationId: importZip
+      summary: Import a zip of Markdown files (Obsidian vault compatible). Runs async. Needs `edit` on parentId (or workspace membership for top level).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                parentId: { type: string, format: uuid }
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { description: Too large, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /import-jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [transfer]
+      operationId: getImportJob
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ events
+  /workspaces/{workspaceId}/events:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [events]
+      operationId: subscribeEvents
+      summary: Server-sent events stream (see conventions §5)
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: hostidian_session
+
+  parameters:
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PageId:
+      name: pageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ThreadId:
+      name: threadId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ShareToken:
+      name: token
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Authenticated but not allowed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Not found (or not visible to the caller)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Conflict
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Validation:
+      description: Validation failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Too many attempts
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [bad_request, unauthorized, forbidden, not_found, conflict, payload_too_large, validation_failed, rate_limited, internal]
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: { type: string }
+
+    WorkspaceRole:
+      type: string
+      enum: [owner, admin, member, guest]
+    InviteRole:
+      type: string
+      enum: [admin, member, guest]
+    PageRole:
+      type: string
+      description: Explicit grant roles (`none` is never stored)
+      enum: [view, comment, edit, full]
+    EffectiveRole:
+      type: string
+      description: Caller's resolved role on a page
+      enum: [view, comment, edit, full]
+    Visibility:
+      type: string
+      enum: [workspace, private]
+
+    InstanceInfo:
+      type: object
+      required: [needsSetup, instanceName, allowOpenSignup, oidc, version]
+      properties:
+        needsSetup: { type: boolean }
+        instanceName: { type: string }
+        allowOpenSignup: { type: boolean }
+        oidc:
+          type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean }
+            name: { type: string, description: 'Button label, e.g. "Single sign-on"' }
+        version: { type: string }
+
+    InstanceSettings:
+      type: object
+      required: [instanceName, allowOpenSignup, allowWorkspaceCreation]
+      properties:
+        instanceName: { type: string }
+        allowOpenSignup: { type: boolean }
+        allowWorkspaceCreation: { type: boolean }
+
+    User:
+      type: object
+      required: [id, email, name, avatarColor, isInstanceAdmin, hasPassword, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatarColor: { type: string }
+        isInstanceAdmin: { type: boolean }
+        hasPassword: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    UserRef:
+      type: object
+      description: Minimal public user info (never includes email)
+      required: [id, name, avatarColor]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        avatarColor: { type: string }
+
+    MemberUser:
+      type: object
+      description: User info visible to workspace members
+      required: [id, name, email, avatarColor]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        avatarColor: { type: string }
+
+    AdminUser:
+      type: object
+      required: [id, email, name, avatarColor, isInstanceAdmin, createdAt, workspaceCount]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatarColor: { type: string }
+        isInstanceAdmin: { type: boolean }
+        disabledAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+        workspaceCount: { type: integer }
+
+    Session:
+      type: object
+      required: [id, userAgent, ip, createdAt, lastSeenAt, current]
+      properties:
+        id: { type: string, format: uuid }
+        userAgent: { type: string }
+        ip: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        current: { type: boolean }
+
+    Workspace:
+      type: object
+      required: [id, name, slug, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        icon: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    WorkspaceMembership:
+      type: object
+      required: [workspace, role]
+      properties:
+        workspace: { $ref: '#/components/schemas/Workspace' }
+        role: { $ref: '#/components/schemas/WorkspaceRole' }
+
+    Me:
+      type: object
+      required: [user, workspaces]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        workspaces:
+          type: array
+          items: { $ref: '#/components/schemas/WorkspaceMembership' }
+
+    Member:
+      type: object
+      required: [user, role, joinedAt]
+      properties:
+        user: { $ref: '#/components/schemas/MemberUser' }
+        role: { $ref: '#/components/schemas/WorkspaceRole' }
+        joinedAt: { type: string, format: date-time }
+
+    Invite:
+      type: object
+      required: [id, token, url, role, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string }
+        url: { type: string, description: Absolute sign-up link built from PUBLIC_URL (`/invite/<token>`) }
+        role: { $ref: '#/components/schemas/InviteRole' }
+        email: { type: string, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    InviteInfo:
+      type: object
+      required: [workspaceName, role]
+      properties:
+        workspaceName: { type: string }
+        role: { $ref: '#/components/schemas/InviteRole' }
+        email: { type: string, nullable: true }
+
+    PageSummary:
+      type: object
+      required: [id, workspaceId, parentId, title, position, visibility, role, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        parentId: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        icon: { type: string, nullable: true }
+        cover: { type: string, nullable: true }
+        position: { type: string }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        role: { $ref: '#/components/schemas/EffectiveRole' }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: string, format: date-time, nullable: true }
+
+    PageRef:
+      type: object
+      required: [id, title]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        icon: { type: string, nullable: true }
+
+    PageDetail:
+      type: object
+      required: [page, breadcrumbs, isFavorite]
+      properties:
+        page: { $ref: '#/components/schemas/PageSummary' }
+        breadcrumbs:
+          type: array
+          description: Ancestors from root down to the parent (excludes the page itself); only ancestors the caller can view
+          items: { $ref: '#/components/schemas/PageRef' }
+        isFavorite: { type: boolean }
+        lastEditedBy: { $ref: '#/components/schemas/UserRef' }   # absent when unknown
+
+    PermissionEntry:
+      type: object
+      required: [user, role]
+      properties:
+        user: { $ref: '#/components/schemas/MemberUser' }
+        role: { $ref: '#/components/schemas/PageRole' }
+        inheritedFrom:
+          type: string
+          format: uuid
+          nullable: true
+          description: Ancestor page id the grant is inherited from; null = granted on this page
+
+    PagePermissions:
+      type: object
+      required: [visibility, canChangeVisibility, entries]
+      properties:
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        canChangeVisibility: { type: boolean, description: true only for root pages }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/PermissionEntry' }
+
+    CollabToken:
+      type: object
+      required: [token, expiresAt, role, wsUrl, documentName]
+      properties:
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        role: { $ref: '#/components/schemas/EffectiveRole' }
+        wsUrl: { type: string, description: 'Full WebSocket URL, e.g. wss://notes.example.com/collab' }
+        documentName: { type: string, description: 'page:<pageId>' }
+
+    PageContent:
+      type: object
+      required: [blocks, markdown, updatedAt]
+      properties:
+        blocks:
+          type: array
+          description: BlockNote block JSON (opaque to the API)
+          items: { type: object, additionalProperties: true }
+        markdown: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    Graph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [id, title]
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+              icon: { type: string, nullable: true }
+              parentId: { type: string, format: uuid, nullable: true }
+              linkCount: { type: integer }
+        edges:
+          type: array
+          items:
+            type: object
+            required: [source, target]
+            properties:
+              source: { type: string, format: uuid }
+              target: { type: string, format: uuid }
+
+    SearchResult:
+      type: object
+      required: [page, rank]
+      properties:
+        page: { $ref: '#/components/schemas/PageSummary' }
+        snippet:
+          type: string
+          nullable: true
+          description: 'Plain text with matches wrapped in <mark>…</mark>; HTML-escaped otherwise'
+        rank: { type: number }
+
+    Attachment:
+      type: object
+      required: [id, url, filename, contentType, sizeBytes]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, description: '/api/files/<id>' }
+        filename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+
+    Comment:
+      type: object
+      required: [id, threadId, author, body, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        threadId: { type: string, format: uuid }
+        author: { $ref: '#/components/schemas/UserRef' }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CommentThread:
+      type: object
+      required: [id, pageId, blockId, quote, createdAt, comments]
+      properties:
+        id: { type: string, format: uuid }
+        pageId: { type: string, format: uuid }
+        blockId: { type: string }
+        quote: { type: string }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        resolvedBy: { $ref: '#/components/schemas/UserRef' }   # absent while unresolved
+        createdAt: { type: string, format: date-time }
+        comments:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+
+    ShareLink:
+      type: object
+      required: [id, pageId, token, url, includeSubpages, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        pageId: { type: string, format: uuid }
+        token: { type: string }
+        url: { type: string, description: 'Absolute URL: <PUBLIC_URL>/s/<token>' }
+        includeSubpages: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+
+    PublicPageMeta:
+      type: object
+      required: [id, title]
+      properties:
+        id: { type: string, format: uuid }
+        parentId: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        icon: { type: string, nullable: true }
+        cover: { type: string, nullable: true }
+
+    PublicPage:
+      type: object
+      required: [page, blocks, rootPageId, includeSubpages, tree, updatedAt]
+      properties:
+        page: { $ref: '#/components/schemas/PublicPageMeta' }
+        blocks:
+          type: array
+          items: { type: object, additionalProperties: true }
+        rootPageId: { type: string, format: uuid }
+        includeSubpages: { type: boolean }
+        tree:
+          type: array
+          description: Shared subtree (flat, ordered); just the root when includeSubpages is false
+          items: { $ref: '#/components/schemas/PublicPageMeta' }
+        updatedAt: { type: string, format: date-time }
+
+    ImportJob:
+      type: object
+      required: [id, status, total, processed, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, running, done, failed] }
+        total: { type: integer }
+        processed: { type: integer }
+        error: { type: string, nullable: true }
+        result:
+          type: object
+          nullable: true
+          properties:
+            rootPageIds:
+              type: array
+              items: { type: string, format: uuid }
+            warnings:
+              type: array
+              items: { type: string }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }

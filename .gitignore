@@ -1,0 +1,26 @@
+# deps / build
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+backend/bin/
+backend/tmp/
+
+# env / secrets / data
+.env
+.env.*
+!.env.example
+data/
+*.log
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# tests
+playwright-report/
+test-results/
+.pnpm-lock.d/

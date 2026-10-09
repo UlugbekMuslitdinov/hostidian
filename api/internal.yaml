@@ -1,0 +1,152 @@
+openapi: 3.0.3
+info:
+  title: Hostidian internal service API
+  version: 0.1.0
+  description: |
+    Service-to-service endpoints. **Never exposed through Caddy**; reachable only on the internal docker network.
+    Every request carries `Authorization: Bearer <INTERNAL_TOKEN>` (constant-time compare). Error envelope as in conventions §1.
+servers:
+  - url: http://api:8081
+    description: Go API internal listener (INTERNAL_ADDR, default :8081)
+  - url: http://collab:1235
+    description: Collab internal listener (COLLAB_INTERNAL_PORT, default 1235)
+
+tags:
+  - name: api-internal
+    description: Served by the Go API (port 8081)
+  - name: collab-internal
+    description: Served by the collab service (port 1235)
+
+security:
+  - internalToken: []
+
+paths:
+  /internal/pages/{pageId}/content:
+    parameters:
+      - name: pageId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [api-internal]
+      operationId: putPageContent
+      summary: collab → api. Store extracted content after a Y.Doc was persisted.
+      description: |
+        Go upserts `page_content`, replaces `page_links` (silently dropping targets that don't exist in the
+        same workspace or equal the page itself), sets `pages.updated_at = now()` and `last_edited_by`
+        (first of `editorIds` that is a valid user), and emits a `page.updated` SSE event.
+        Returns 404 if the page no longer exists (collab then drops the document).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [markdown, plaintext, blocks, linkTargets]
+              properties:
+                markdown: { type: string }
+                plaintext: { type: string }
+                blocks:
+                  type: array
+                  items: { type: object, additionalProperties: true }
+                linkTargets:
+                  type: array
+                  description: Distinct page ids referenced by pageLink inline nodes
+                  items: { type: string, format: uuid }
+                editorIds:
+                  type: array
+                  description: User ids that edited since the last store (most recent first)
+                  items: { type: string, format: uuid }
+      responses:
+        '204': { description: Stored }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/disconnect:
+    post:
+      tags: [collab-internal]
+      operationId: disconnectClients
+      summary: api → collab. Close live WebSocket connections (permissions changed / user disabled / page archived).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: At least one of pageId / userId (both = intersection)
+              properties:
+                pageId: { type: string, format: uuid }
+                userId: { type: string, format: uuid }
+                reason: { type: string, default: permissions_changed }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [closed]
+                properties:
+                  closed: { type: integer }
+
+  /internal/import-markdown:
+    post:
+      tags: [collab-internal]
+      operationId: importMarkdown
+      summary: api → collab. Convert Markdown to a Y.Doc, persist it in `page_documents`, then push extracted content to the api (`PUT /internal/pages/{id}/content`).
+      description: |
+        Markdown uses the stored format of conventions §8 (page links already resolved to
+        `[[hostidian:<uuid>|<title>]]`, files as `/api/files/<id>`). Idempotent: replaces any existing document.
+        Returns after both the DB write and the content push succeeded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pageId, markdown]
+              properties:
+                pageId: { type: string, format: uuid }
+                markdown: { type: string }
+                editorId: { type: string, format: uuid }
+      responses:
+        '204': { description: Imported }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /internal/health:
+    get:
+      tags: [api-internal, collab-internal]
+      operationId: internalHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+components:
+  securitySchemes:
+    internalToken:
+      type: http
+      scheme: bearer
+  responses:
+    NotFound:
+      description: Not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Validation:
+      description: Validation failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }

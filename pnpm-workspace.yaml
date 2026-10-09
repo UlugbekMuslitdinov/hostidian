@@ -1,0 +1,5 @@
+packages:
+  - web
+  - collab
+  - e2e
+  - packages/*
