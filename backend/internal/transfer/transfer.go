@@ -546,6 +546,7 @@ func (s *Service) processZip(ctx context.Context, workspaceID, userID uuid.UUID,
 	// Our own export writes a page's body as a sibling `<Title>.md` and its descendants in a `<Title>/`
 	// folder, so the importer must fold such a companion folder back into the page node it belongs to.
 	mergeCompanionFolders(root)
+	defaultTitles(root)
 
 	builder := &importBuilder{
 		svc: s, ctx: ctx, workspaceID: workspaceID, userID: userID, parentID: parentID,
@@ -554,8 +555,12 @@ func (s *Service) processZip(ctx context.Context, workspaceID, userID uuid.UUID,
 	// Index every page node by title before resolving links.
 	indexTitles(root, builder.byTitle)
 	res := importResult{total: total}
-	roots, err := builder.createChildren(root.children, parentID, &res.processed, &warnings)
+	roots, err := builder.createPages(root.children, parentID)
 	if err != nil {
+		res.warnings = warnings
+		return res, err
+	}
+	if err := builder.fillContent(root.children, &res.processed, &warnings); err != nil {
 		res.warnings = warnings
 		return res, err
 	}
@@ -598,6 +603,17 @@ func mergeCompanionFolders(n *importNode) {
 	n.children = out
 }
 
+// defaultTitles gives every node without a title (a pure folder such as Folder/Child.md with no
+// Folder/Folder.md) its folder name, so it is addressable by [[links]] and not listed as "Untitled".
+func defaultTitles(n *importNode) {
+	for _, c := range n.children {
+		if strings.TrimSpace(c.title) == "" {
+			c.title = c.name
+		}
+		defaultTitles(c)
+	}
+}
+
 func indexTitles(n *importNode, into map[string][]*importNode) {
 	for _, c := range n.children {
 		if c.isDir && c.body == "" && len(c.children) > 0 {
@@ -622,7 +638,10 @@ type importBuilder struct {
 	assetFiles  map[string]*zip.File
 }
 
-func (b *importBuilder) createChildren(nodes []*importNode, parent *uuid.UUID, processed *int32, warnings *[]string) ([]uuid.UUID, error) {
+// createPages inserts the page rows of nodes and their descendants (parents first) so that every node has
+// its final id before any body is resolved: links between imported pages then resolve in both directions,
+// and link targets exist when the content is stored.
+func (b *importBuilder) createPages(nodes []*importNode, parent *uuid.UUID) ([]uuid.UUID, error) {
 	if len(nodes) == 0 {
 		return nil, nil
 	}
@@ -636,53 +655,88 @@ func (b *importBuilder) createChildren(nodes []*importNode, parent *uuid.UUID, p
 		if err != nil {
 			return nil, fmt.Errorf("new page id: %w", err)
 		}
-		title := emptyTitle(n.title)
-		vis := "workspace"
 		row, err := b.svc.q.InsertPage(b.ctx, sqlcgen.InsertPageParams{
-			ID: id, WorkspaceID: b.workspaceID, ParentID: parent, Title: title,
-			Position: positions[i], Visibility: vis, CreatedBy: b.userID,
+			ID: id, WorkspaceID: b.workspaceID, ParentID: parent, Title: emptyTitle(firstNonEmpty(n.title, n.name)),
+			Position: positions[i], Visibility: "workspace", CreatedBy: b.userID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("insert page: %w", err)
 		}
 		n.pageID = row.ID
 		ids = append(ids, row.ID)
-		*processed++
-
-		body, err := b.resolveBody(n)
-		if err != nil {
-			return nil, err
-		}
-		// Store searchable/extractable content now; collab overwrites it with the real blocks.
-		if err := b.svc.q.UpsertPageContent(b.ctx, sqlcgen.UpsertPageContentParams{
-			PageID: row.ID, Markdown: body, Plaintext: stripMarkdown(body), Blocks: []byte("[]"),
-		}); err != nil {
-			return nil, fmt.Errorf("store imported content: %w", err)
-		}
-		if err := b.svc.q.InsertPageLinks(b.ctx, sqlcgen.InsertPageLinksParams{
-			SourcePageID: row.ID, Targets: linkedIDs(body),
-		}); err != nil {
-			return nil, fmt.Errorf("store imported links: %w", err)
-		}
-		if err := b.svc.collab.ImportMarkdown(b.ctx, collabclient.ImportRequest{
-			PageID: row.ID, Markdown: body, EditorID: b.userID,
-		}); err != nil {
-			*warnings = append(*warnings, "page content could not be converted: "+title)
-		}
 		childParent := row.ID
-		if _, err := b.createChildren(n.children, &childParent, processed, warnings); err != nil {
+		if _, err := b.createPages(n.children, &childParent); err != nil {
 			return nil, err
 		}
 	}
 	return ids, nil
 }
 
+// fillContent resolves each page's body (links, embeds, assets), stores the searchable content and link
+// rows, and asks collab to build the Y.Doc. Every page row already exists (see createPages).
+func (b *importBuilder) fillContent(nodes []*importNode, processed *int32, warnings *[]string) error {
+	for _, n := range nodes {
+		body, err := b.resolveBody(n)
+		if err != nil {
+			return err
+		}
+		title := emptyTitle(firstNonEmpty(n.title, n.name))
+		// Store searchable/extractable content now; collab overwrites it with the real blocks.
+		if err := b.svc.q.UpsertPageContent(b.ctx, sqlcgen.UpsertPageContentParams{
+			PageID: n.pageID, Markdown: body, Plaintext: stripMarkdown(body), Blocks: []byte("[]"),
+		}); err != nil {
+			return fmt.Errorf("store imported content: %w", err)
+		}
+		if err := b.svc.q.InsertPageLinks(b.ctx, sqlcgen.InsertPageLinksParams{
+			SourcePageID: n.pageID, Targets: linkedIDs(body),
+		}); err != nil {
+			return fmt.Errorf("store imported links: %w", err)
+		}
+		if err := b.svc.collab.ImportMarkdown(b.ctx, collabclient.ImportRequest{
+			PageID: n.pageID, Markdown: body, EditorID: b.userID,
+		}); err != nil {
+			*warnings = append(*warnings, "page content could not be converted: "+title)
+		}
+		*processed++
+		if err := b.fillContent(n.children, processed, warnings); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // resolveBody rewrites import-format wikilinks and asset embeds into the stored format.
 func (b *importBuilder) resolveBody(n *importNode) (string, error) {
 	body := n.body
 
-	// ![[asset]] and ![](asset) -> stored image/file links.
+	// ![[asset]] (Obsidian embed) -> stored image/file link; ![[Note]] -> page link.
 	var resErr error
+	body = obsidianEmbedRe.ReplaceAllStringFunc(body, func(match string) string {
+		inner := obsidianEmbedRe.FindStringSubmatch(match)[1]
+		ref, alias, _ := strings.Cut(inner, "|")
+		ref = strings.TrimSpace(ref)
+		alias = strings.TrimSpace(alias)
+		if stored, err := b.storeAsset(ref, n); err != nil {
+			resErr = err
+			return match
+		} else if stored != "" {
+			alt := path.Base(ref)
+			if alias != "" && !isDigits(alias) { // `|300` is an Obsidian size hint, not alt text
+				alt = alias
+			}
+			return "![" + alt + "](" + stored + ")"
+		}
+		target, _, _ := strings.Cut(ref, "#")
+		if node := b.resolveTitle(strings.TrimSpace(target), n.path); node != nil {
+			return "[[hostidian:" + node.pageID.String() + "|" + node.title + "]]"
+		}
+		return strings.TrimSpace(target)
+	})
+	if resErr != nil {
+		return "", resErr
+	}
+
+	// ![alt](asset) -> stored image/file links.
 	body = assetEmbedRe.ReplaceAllStringFunc(body, func(match string) string {
 		sub := assetEmbedRe.FindStringSubmatch(match)
 		alt, ref := sub[1], sub[2]
@@ -706,6 +760,9 @@ func (b *importBuilder) resolveBody(n *importNode) (string, error) {
 	// [[Title]] / [[Title|alias]] / [[Title#heading]] -> [[hostidian:<id>|<title>]]
 	body = wikiLinkRe.ReplaceAllStringFunc(body, func(match string) string {
 		inner := wikiLinkRe.FindStringSubmatch(match)[1]
+		if strings.HasPrefix(inner, "hostidian:") {
+			return match // already in stored form (e.g. produced from an ![[Note]] embed)
+		}
 		target := inner
 		if i := strings.IndexByte(target, '|'); i >= 0 {
 			target = target[:i]
@@ -840,10 +897,12 @@ func commonPrefixSegments(a, b string) int {
 }
 
 var (
-	wikiLinkRe    = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
-	assetEmbedRe  = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
-	frontmatterRe = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---\r?\n?`)
-	titleLineRe   = regexp.MustCompile(`(?m)^title:\s*(.*)$`)
+	wikiLinkRe = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
+	// obsidianEmbedRe matches Obsidian embeds such as ![[logo.png]] or ![[logo.png|300]].
+	obsidianEmbedRe = regexp.MustCompile(`!\[\[([^\[\]]+)\]\]`)
+	assetEmbedRe    = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
+	frontmatterRe   = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---\r?\n?`)
+	titleLineRe     = regexp.MustCompile(`(?m)^title:\s*(.*)$`)
 )
 
 // parseFrontmatter extracts a `title` from YAML-ish frontmatter and returns the body without it.
@@ -936,4 +995,16 @@ func stripMarkdown(md string) string {
 	md = mdLinkRe.ReplaceAllString(md, "$1")
 	md = mdMarkRe.ReplaceAllString(md, " ")
 	return strings.Join(strings.Fields(md), " ")
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
