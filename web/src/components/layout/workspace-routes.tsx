@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { GraphView } from "@/components/graph/graph-view";
 import { PageView } from "@/components/page/page-view";
 import { TrashView } from "@/components/page/trash-view";
 import { WorkspaceHome } from "@/components/page/workspace-home";
@@ -28,6 +29,8 @@ export function WorkspaceRoutes() {
       return <PageView key={route.pageId} pageId={route.pageId} />;
     case "trash":
       return <TrashView />;
+    case "graph":
+      return <GraphView />;
     default:
       return <WorkspaceHome />;
   }

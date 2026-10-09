@@ -72,6 +72,14 @@ export const trashOptions = (workspaceId: string) =>
       unwrap(api.GET("/workspaces/{workspaceId}/trash", { params: { path: { workspaceId } }, signal })),
   });
 
+export const graphOptions = (workspaceId: string) =>
+  queryOptions({
+    queryKey: qk.graph(workspaceId),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET("/workspaces/{workspaceId}/graph", { params: { path: { workspaceId } }, signal })),
+    staleTime: 30_000,
+  });
+
 export const membersOptions = (workspaceId: string) =>
   queryOptions({
     queryKey: qk.members(workspaceId),

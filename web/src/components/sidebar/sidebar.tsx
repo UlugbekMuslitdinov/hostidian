@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Home, PanelLeftClose, Search, Settings, Trash2 } from "lucide-react";
+import { Home, Network, PanelLeftClose, Search, Settings, Trash2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useAppUI } from "@/components/layout/app-ui";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ export function Sidebar({ inDrawer = false }: { inDrawer?: boolean }) {
 
   const home = workspaceHref(workspace.slug);
   const trash = `${home}/trash`;
+  const graph = `${home}/graph`;
   const mod = isMac() ? "⌘" : "Ctrl+";
 
   return (
@@ -49,6 +50,9 @@ export function Sidebar({ inDrawer = false }: { inDrawer?: boolean }) {
         </SidebarButton>
         <SidebarLink href={home} icon={<Home />} active={pathname === home}>
           Home
+        </SidebarLink>
+        <SidebarLink href={graph} icon={<Network />} active={pathname === graph}>
+          Graph
         </SidebarLink>
       </nav>
 

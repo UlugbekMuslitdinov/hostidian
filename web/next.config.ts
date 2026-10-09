@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { withSerwist } from "@serwist/turbopack";
 import type { NextConfig } from "next";
 
 // Dev-only proxy target for the Go API. In production Caddy serves `/api/*` on the same origin,
@@ -19,6 +20,13 @@ const securityHeaders = [
   },
 ];
 
+// The service worker must always be re-validated (never served from the HTTP cache) and may control the whole
+// origin even though it is served from /serwist/.
+const serviceWorkerHeaders = [
+  { key: "Cache-Control", value: "no-cache" },
+  { key: "Service-Worker-Allowed", value: "/" },
+];
+
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
@@ -36,8 +44,11 @@ const nextConfig: NextConfig = {
     return [{ source: "/api/:path*", destination: `${apiTarget}/api/:path*` }];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/serwist/:path*", headers: serviceWorkerHeaders },
+    ];
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

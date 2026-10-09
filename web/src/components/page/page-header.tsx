@@ -1,7 +1,8 @@
 "use client";
 
-import { MoreHorizontal, Share2, Star } from "lucide-react";
+import { MessageSquare, MoreHorizontal, Share2, Star } from "lucide-react";
 import { useState } from "react";
+import { useComments } from "@/components/comments/comments-context";
 import { TopBar } from "@/components/layout/topbar";
 import { ShareDialog } from "@/components/share/share-dialog";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { PresenceStack, usePresence } from "./presence";
 export function PageHeader({ detail, actions }: { detail: PageDetail; actions: PageActions }) {
   const { workspace } = useWorkspace();
   const presence = usePresence();
+  const comments = useComments();
   const [shareOpen, setShareOpen] = useState(false);
   const { page, isFavorite } = detail;
 
@@ -31,6 +33,19 @@ export function PageHeader({ detail, actions }: { detail: PageDetail; actions: P
         />
         <div className="flex shrink-0 items-center gap-0.5">
           <PresenceStack users={presence} />
+          {comments?.available ? (
+            <Tip label="Comments">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Comments"
+                aria-pressed={comments.panelOpen}
+                onClick={() => comments.setPanelOpen(!comments.panelOpen)}
+              >
+                <MessageSquare />
+              </Button>
+            </Tip>
+          ) : null}
           <Button variant="ghost" size="sm" className="ml-1 max-md:hidden" onClick={() => setShareOpen(true)}>
             Share
           </Button>

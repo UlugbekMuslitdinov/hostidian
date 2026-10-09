@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
+<title>Offline · Hostidian</title>
+<link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #37352f; --muted: #6b6a66; --accent: #1f76d1; --border: #e6e5e1; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #191919; --fg: #ebebea; --muted: #a3a29e; --accent: #3b9bf0; --border: #323232; } }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
+    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 26rem; text-align: center; }
+  img { width: 56px; height: 56px; border-radius: 14px; }
+  h1 { margin: 20px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 0 0 20px; color: var(--muted); }
+  .actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  a, button {
+    appearance: none; min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--fg); font: inherit; font-weight: 500; cursor: pointer;
+    display: inline-flex; align-items: center; text-decoration: none; touch-action: manipulation;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icons/icon-192.png" alt="" width="56" height="56">
+  <h1>You&rsquo;re offline</h1>
+  <p>This page isn&rsquo;t available without a connection. Pages you opened recently are still available from your workspace.</p>
+  <div class="actions">
+    <button class="primary" type="button" onclick="location.reload()">Try again</button>
+    <a href="/">Open Hostidian</a>
+  </div>
+</main>
+<script>
+  // Reload automatically as soon as the connection comes back.
+  addEventListener("online", function () { location.reload(); });
+</script>
+</body>
+</html>

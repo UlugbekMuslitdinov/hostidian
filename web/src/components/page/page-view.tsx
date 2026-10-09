@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, FileQuestion, MessageSquare, Trash2, WifiOff } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/common/empty-state";
+import { CommentsProvider } from "@/components/comments/comments-context";
+import { CommentsDock } from "@/components/comments/comments-dock";
 import { PageEditor } from "@/components/editor/page-editor";
 import { TopBar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { AppLink } from "@/lib/nav";
 import { pageTitle, workspaceHref } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import type { PageDetail } from "@hostidian/api-types";
+import { BacklinksPanel } from "./backlinks-panel";
 import { PageHeader } from "./page-header";
 import { PageCover, PageTitleBlock } from "./page-title-block";
 import { PresenceProvider } from "./presence";
@@ -77,49 +80,59 @@ function PageContent({ detail }: { detail: PageDetail }) {
   const editable = canEdit(page.role) && !page.archivedAt;
 
   return (
-    <div className="min-h-full pb-safe">
-      {/* The visible title is an editable textarea; this gives assistive tech a page heading. */}
-      <h1 className="sr-only">{pageTitle(page.title)}</h1>
-      <PageHeader detail={detail} actions={actions} />
-      <PageCover cover={page.cover} editable={editable} onChange={(cover) => actions.updateMeta(page.id, { cover })} />
+    <CommentsProvider pageId={page.id} role={page.role}>
+      <div className="min-h-full pb-safe">
+        {/* The visible title is an editable textarea; this gives assistive tech a page heading. */}
+        <h1 className="sr-only">{pageTitle(page.title)}</h1>
+        <PageHeader detail={detail} actions={actions} />
 
-      <div className="mx-auto w-full max-w-[720px] px-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] md:px-8">
-        {page.archivedAt ? (
-          <Banner icon={<Trash2 className="size-4" />} tone="warning">
-            This page is in the Trash.
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto bg-background"
-              onClick={() => actions.restore(page.id)}
-            >
-              Restore
-            </Button>
-          </Banner>
-        ) : !canEdit(page.role) ? (
-          <Banner icon={canComment(page.role) ? <MessageSquare className="size-4" /> : <Eye className="size-4" />}>
-            {canComment(page.role)
-              ? "You can comment on this page, but not edit it."
-              : "You have view-only access to this page."}
-          </Banner>
-        ) : null}
+        <div className="flex items-start">
+          <div className="min-w-0 flex-1">
+            <PageCover cover={page.cover} editable={editable} onChange={(cover) => actions.updateMeta(page.id, { cover })} />
 
-        <PageTitleBlock
-          page={page}
-          editable={editable}
-          onSaveTitle={(title) => actions.updateMeta(page.id, { title })}
-          onChangeIcon={(icon) => actions.updateMeta(page.id, { icon })}
-          onChangeCover={(cover) => actions.updateMeta(page.id, { cover })}
-        />
+            <div className="mx-auto w-full max-w-[720px] px-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] md:px-8">
+              {page.archivedAt ? (
+                <Banner icon={<Trash2 className="size-4" />} tone="warning">
+                  This page is in the Trash.
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto bg-background"
+                    onClick={() => actions.restore(page.id)}
+                  >
+                    Restore
+                  </Button>
+                </Banner>
+              ) : !canEdit(page.role) ? (
+                <Banner icon={canComment(page.role) ? <MessageSquare className="size-4" /> : <Eye className="size-4" />}>
+                  {canComment(page.role)
+                    ? "You can comment on this page, but not edit it."
+                    : "You have view-only access to this page."}
+                </Banner>
+              ) : null}
 
-        <p className="mb-2 text-xs text-muted-foreground">
-          Last edited {formatRelative(page.updatedAt, now || Date.parse(page.updatedAt))}
-          {detail.lastEditedBy ? ` by ${detail.lastEditedBy.name}` : ""}
-        </p>
+              <PageTitleBlock
+                page={page}
+                editable={editable}
+                onSaveTitle={(title) => actions.updateMeta(page.id, { title })}
+                onChangeIcon={(icon) => actions.updateMeta(page.id, { icon })}
+                onChangeCover={(cover) => actions.updateMeta(page.id, { cover })}
+              />
 
-        <PageEditor pageId={page.id} role={page.role} />
+              <p className="mb-2 text-xs text-muted-foreground">
+                Last edited {formatRelative(page.updatedAt, now || Date.parse(page.updatedAt))}
+                {detail.lastEditedBy ? ` by ${detail.lastEditedBy.name}` : ""}
+              </p>
+
+              <PageEditor pageId={page.id} role={page.role} />
+              <BacklinksPanel pageId={page.id} />
+            </div>
+          </div>
+
+          <CommentsDock />
+        </div>
       </div>
-    </div>
+    </CommentsProvider>
   );
 }
 

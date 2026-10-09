@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { FormError, FormField } from "@/components/common/form-field";
 import { IconPicker } from "@/components/page/icon-picker";
 import { WorkspaceBadge } from "@/components/sidebar/workspace-switcher";
+import { ImportExportSection } from "@/components/transfer/transfer-panel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +63,7 @@ export function WorkspaceSettings() {
     <>
       <GeneralSection />
       <MembersSection />
+      <ImportExportSection />
       {canInviteMembers(ws.role) && <InvitesSection />}
       {canDeleteWorkspace(ws.role) && <DangerSection />}
     </>

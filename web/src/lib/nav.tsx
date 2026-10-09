@@ -20,9 +20,10 @@ export type RouteInfo =
   | { kind: "home"; slug: string }
   | { kind: "page"; slug: string; pageId: string }
   | { kind: "trash"; slug: string }
+  | { kind: "graph"; slug: string }
   | { kind: "other" };
 
-const WORKSPACE_RE = /^\/w\/([^/]+)(?:\/(?:p\/([^/]+)|(trash)))?\/?$/;
+const WORKSPACE_RE = /^\/w\/([^/]+)(?:\/(?:p\/([^/]+)|(trash)|(graph)))?\/?$/;
 
 export function parseRoute(pathname: string): RouteInfo {
   const path = pathname.split(/[?#]/, 1)[0] ?? "";
@@ -31,6 +32,7 @@ export function parseRoute(pathname: string): RouteInfo {
   const slug = safeDecode(m[1]!);
   if (m[2]) return { kind: "page", slug, pageId: safeDecode(m[2]) };
   if (m[3]) return { kind: "trash", slug };
+  if (m[4]) return { kind: "graph", slug };
   return { kind: "home", slug };
 }
 
