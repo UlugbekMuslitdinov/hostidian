@@ -1,0 +1,171 @@
+# Hostidian: production-oriented stack. Only Caddy publishes ports; Postgres, the API's internal port (8081)
+# and the collab internal port (1235) are reachable only on the private compose networks.
+#
+#   ./scripts/gen-env.sh        # once: writes .env with random secrets
+#   docker compose up -d        # builds the images on first run, then open https://localhost
+#
+# Configuration comes from .env (see .env.example and docs/deployment.md).
+
+name: hostidian
+
+x-service: &service
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# Stateless app containers run as non-root and need no Linux capabilities.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hostidian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - run ./scripts/gen-env.sh}
+      POSTGRES_DB: ${POSTGRES_DB:-hostidian}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [data]
+
+  api:
+    <<: [*service, *hardened]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      API_ADDR: ${API_ADDR:-:8080}
+      INTERNAL_ADDR: ${INTERNAL_ADDR:-:8081}
+      PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # .env wins (use it to point at an external database); otherwise it is built from POSTGRES_*.
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-hostidian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hostidian}?sslmode=disable}
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?COLLAB_JWT_SECRET is not set - run ./scripts/gen-env.sh}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is not set - run ./scripts/gen-env.sh}
+      APP_SECRET: ${APP_SECRET:?APP_SECRET is not set - run ./scripts/gen-env.sh}
+      COLLAB_INTERNAL_URL: ${COLLAB_INTERNAL_URL:-http://collab:1235}
+      COLLAB_PUBLIC_URL: ${COLLAB_PUBLIC_URL:-}
+      DATA_DIR: ${DATA_DIR:-/data}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-Single sign-on}
+    volumes:
+      - appdata:/data
+    stop_grace_period: 30s
+    networks: [frontend, data]
+
+  collab:
+    <<: [*service, *hardened]
+    build:
+      context: .
+      dockerfile: collab/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # The API owns the schema (migrations run on its start), and collab calls it on every store.
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      COLLAB_PORT: ${COLLAB_PORT:-1234}
+      COLLAB_INTERNAL_PORT: ${COLLAB_INTERNAL_PORT:-1235}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8081}
+      PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-hostidian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hostidian}?sslmode=disable}
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?COLLAB_JWT_SECRET is not set - run ./scripts/gen-env.sh}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is not set - run ./scripts/gen-env.sh}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Time to flush debounced document writes on SIGTERM.
+    stop_grace_period: 30s
+    networks: [frontend, data]
+
+  web:
+    <<: [*service, *hardened]
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    networks: [frontend]
+
+  caddy:
+    <<: *service
+    image: caddy:2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      collab:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+    ports:
+      # Host and container ports are identical on purpose (see deploy/Caddyfile).
+      - "${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}/udp" # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data     # certificates and the local CA: keep this volume
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [frontend]
+
+  # Maintenance container (backups / restores of the files volume and database), not started by `up`.
+  # Used by `make backup` and `make restore`; see docs/deployment.md.
+  tools:
+    image: postgres:17-alpine
+    profiles: [tools]
+    entrypoint: []
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-hostidian}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+      PGDATABASE: ${POSTGRES_DB:-hostidian}
+    volumes:
+      - appdata:/data
+      - ${BACKUP_DIR:-./backups}:/backups
+    networks: [data]
+
+networks:
+  # caddy, web, api, collab
+  frontend:
+  # postgres, api, collab. No route to the outside world, so the database cannot be reached from web or caddy.
+  data:
+    internal: true
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:

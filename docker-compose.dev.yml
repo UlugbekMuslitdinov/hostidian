@@ -1,0 +1,46 @@
+# Local development helpers (standalone: use with `-f docker-compose.dev.yml`, or via the Makefile).
+#
+#   make dev-db      # Postgres on 127.0.0.1:5432
+#   make dev-proxy   # optional single-origin proxy on http://localhost:8000 in front of the host-run services
+#
+# The services themselves (api, collab, web) run on the host with `make dev-api|dev-collab|dev-web`.
+# Dev credentials below are for a loopback-only database; never reuse them in production.
+
+name: hostidian-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hostidian
+      POSTGRES_PASSWORD: hostidian
+      POSTGRES_DB: hostidian
+    ports:
+      - "127.0.0.1:${DEV_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hostidian -d hostidian"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Same routing as production (deploy/Caddyfile) but plain HTTP and pointing at the host:
+  #   /api/* -> :8080   /collab -> :1234   everything else -> :3000
+  # Gives cookies, SSE and WebSockets the same single origin they have in production.
+  proxy:
+    profiles: [proxy]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${DEV_PROXY_PORT:-8000}:8000"
+    volumes:
+      - ./deploy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+
+volumes:
+  pgdata_dev:

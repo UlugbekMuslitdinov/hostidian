@@ -1,0 +1,115 @@
+"use client";
+
+import { Lock, ShieldCheck, SlidersHorizontal, User } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+import { TopBar } from "@/components/layout/topbar";
+import { useSession } from "@/lib/session";
+import { cn } from "@/lib/utils";
+
+const settingsLinks = [
+  { href: "/settings", label: "Profile", icon: User },
+  { href: "/settings/security", label: "Security", icon: Lock },
+  { href: "/settings/workspace", label: "Workspace", icon: SlidersHorizontal },
+] as const;
+
+const adminLinks = [
+  { href: "/admin/users", label: "Users", icon: User },
+  { href: "/admin/settings", label: "Instance", icon: ShieldCheck },
+] as const;
+
+export function SettingsShell({
+  area,
+  title,
+  children,
+}: {
+  area: "settings" | "admin";
+  title: string;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  const { user } = useSession();
+  const links = area === "settings" ? settingsLinks : adminLinks;
+
+  return (
+    <>
+      <TopBar>
+        <span className="truncate px-1.5 text-[13px] font-medium">
+          {area === "admin" ? "Instance admin" : "Settings"}
+        </span>
+      </TopBar>
+      <div className="mx-auto w-full max-w-4xl px-5 pb-20 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] md:px-10">
+        <h1 className="pt-6 pb-4 text-2xl font-semibold tracking-tight md:pt-10">{title}</h1>
+        <div className="flex flex-col gap-6 md:flex-row md:gap-10">
+          <nav
+            aria-label={area === "admin" ? "Admin sections" : "Settings sections"}
+            className="no-scrollbar -mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 md:mx-0 md:w-44 md:flex-col md:overflow-visible md:px-0"
+          >
+            {links.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  prefetch={false}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:min-h-8",
+                    active && "bg-accent font-medium text-foreground",
+                  )}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {label}
+                </Link>
+              );
+            })}
+            {area === "settings" && user.isInstanceAdmin && (
+              <Link
+                href="/admin/users"
+                prefetch={false}
+                className="flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:mt-4 md:min-h-8"
+              >
+                <ShieldCheck className="size-4" aria-hidden="true" />
+                Instance admin
+              </Link>
+            )}
+            {area === "admin" && (
+              <Link
+                href="/settings"
+                prefetch={false}
+                className="flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:mt-4 md:min-h-8"
+              >
+                <User className="size-4" aria-hidden="true" />
+                My settings
+              </Link>
+            )}
+          </nav>
+          <div className="min-w-0 flex-1">{children}</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function SettingsSection({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("border-b py-6 first:pt-0 last:border-b-0", className)}>
+      <div className="mb-4">
+        <h2 className="text-base font-semibold">{title}</h2>
+        {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}

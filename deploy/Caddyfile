@@ -1,0 +1,81 @@
+# Hostidian single-origin reverse proxy.
+#
+#   /api/*      -> api:8080     (SSE endpoint is streamed unbuffered and uncompressed)
+#   /collab*    -> collab:1234  (prefix stripped; WebSocket upgrade)
+#   /internal*  -> 404          (service-to-service endpoints must never be reachable from outside)
+#   everything else -> web:3000
+#
+# DOMAIN (env, default "localhost") is the site address:
+#   localhost              self-signed HTTPS from Caddy's internal CA (local testing)
+#   notes.example.com      automatic Let's Encrypt HTTPS (ports 80 and 443 must reach this host)
+#   http://notes.lan, :80  plain HTTP, no certificates (the PWA/service worker only works on https or localhost)
+{
+	# Listen ports. Compose publishes the same numbers on the host (HTTP_PORT/HTTPS_PORT) so that
+	# redirects and certificate issuance stay correct when they are changed from 80/443.
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$DOMAIN:localhost} {
+	log {
+		output stdout
+	}
+
+	# Never reachable from the outside, whatever the backends do. Also covers the prefixes under which a
+	# backend could accidentally expose its internal API.
+	@internal path /internal* /api/internal* /collab/internal*
+	handle @internal {
+		respond "Not Found" 404
+	}
+
+	# Security headers. ">" defers the write so a backend's own value is replaced instead of duplicated.
+	# A strict Content-Security-Policy is a deliberate follow-up (see docs/deployment.md).
+	header {
+		>X-Content-Type-Options "nosniff"
+		>Referrer-Policy "strict-origin-when-cross-origin"
+		>Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		>X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	# HSTS only for real HTTPS hostnames: never for localhost, where it would pin https for every other
+	# local service the browser visits on that name.
+	@hsts {
+		protocol https
+		not host localhost *.localhost 127.0.0.1 [::1]
+	}
+	header @hsts >Strict-Transport-Security "max-age=31536000"
+
+	# Server-sent events: stream every byte as soon as it is written; no compression, no buffering.
+	@sse path_regexp sse ^/api/workspaces/[^/]+/events/?$
+	handle @sse {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
+	# REST API. The limit covers Markdown/zip imports (up to 500 MB); per-file upload limits
+	# (MAX_UPLOAD_MB) are enforced by the API itself with a proper JSON error.
+	handle /api/* {
+		request_body {
+			max_size 512MB
+		}
+		encode zstd gzip
+		reverse_proxy api:8080
+	}
+
+	# Hocuspocus WebSocket. handle_path strips the "/collab" prefix before proxying.
+	handle_path /collab* {
+		reverse_proxy collab:1234
+	}
+
+	# Next.js (pages, static assets, service worker, manifest).
+	handle {
+		encode zstd gzip
+		reverse_proxy web:3000
+	}
+}

@@ -1,0 +1,36 @@
+# Development proxy (docker-compose.dev.yml, profile "proxy"): plain HTTP on :8000 in front of the
+# services running on the host. Mirrors the routing of deploy/Caddyfile.
+{
+	auto_https off
+	admin off
+}
+
+:8000 {
+	@internal path /internal* /api/internal* /collab/internal*
+	handle @internal {
+		respond "Not Found" 404
+	}
+
+	@sse path_regexp sse ^/api/workspaces/[^/]+/events/?$
+	handle @sse {
+		reverse_proxy host.docker.internal:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		request_body {
+			max_size 512MB
+		}
+		reverse_proxy host.docker.internal:8080
+	}
+
+	handle_path /collab* {
+		reverse_proxy host.docker.internal:1234
+	}
+
+	# Next.js dev server (includes the HMR WebSocket).
+	handle {
+		reverse_proxy host.docker.internal:3000
+	}
+}

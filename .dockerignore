@@ -1,0 +1,40 @@
+# Build context = repo root (collab/Dockerfile and web/Dockerfile, pnpm workspace images).
+# The backend image is built with context ./backend and uses backend/.dockerignore instead.
+
+# VCS / editor / OS
+.git
+.github
+.idea
+.vscode
+**/.DS_Store
+
+# Secrets and local state: never send these to the daemon
+.env
+.env.*
+!.env.example
+backups
+data
+**/*.log
+
+# Dependencies and build output are produced inside the image
+**/node_modules
+**/.next
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+.pnpm-lock.d
+
+# Not needed by the pnpm-workspace images
+backend
+deploy
+docs
+e2e/node_modules
+e2e/playwright-report
+e2e/test-results
+playwright-report
+test-results
+Makefile
+docker-compose*.yml
+**/Dockerfile*
+**/.dockerignore

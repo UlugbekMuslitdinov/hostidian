@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@9.10.0",
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.12"
   },
   "scripts": {
     "gen:api": "pnpm -F @hostidian/api-types gen",

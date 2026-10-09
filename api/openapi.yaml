@@ -198,7 +198,7 @@ paths:
         - { name: state, in: query, schema: { type: string } }
         - { name: error, in: query, schema: { type: string } }
       responses:
-        '302': { description: Redirect to the app (session cookie set) or to /login?error=… }
+        '302': { description: 'Redirect to the app (session cookie set) or to /login?error=…' }
 
   /auth/password-reset/confirm:
     post:

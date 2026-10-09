@@ -1,0 +1,97 @@
+/*
+ * Styles for the Hostidian BlockNote extensions (callout block, page-link chip).
+ * Import once in the app: `import "@hostidian/editor-schema/styles.css"`.
+ *
+ * Every colour is a CSS variable so the host app can theme them. Dark values apply under `.dark`, `[data-theme="dark"]`
+ * and BlockNote's own `[data-color-scheme="dark"]`.
+ */
+:root {
+  --callout-note-bg: #eef4ff;
+  --callout-note-border: #b6cdf7;
+  --callout-tip-bg: #ecf8ef;
+  --callout-tip-border: #a9dcb6;
+  --callout-warning-bg: #fff6e0;
+  --callout-warning-border: #f1d58a;
+  --callout-danger-bg: #fdeeee;
+  --callout-danger-border: #f0b4b4;
+  --page-link-fg: inherit;
+  --page-link-bg: rgb(0 0 0 / 0.05);
+  --page-link-bg-hover: rgb(0 0 0 / 0.1);
+}
+
+.dark,
+[data-theme="dark"],
+[data-color-scheme="dark"] {
+  --callout-note-bg: #1c2a40;
+  --callout-note-border: #34517d;
+  --callout-tip-bg: #1b3326;
+  --callout-tip-border: #2f6a47;
+  --callout-warning-bg: #3a2f14;
+  --callout-warning-border: #7a622a;
+  --callout-danger-bg: #3d1f21;
+  --callout-danger-border: #824046;
+  --page-link-bg: rgb(255 255 255 / 0.08);
+  --page-link-bg-hover: rgb(255 255 255 / 0.15);
+}
+
+.hostidian-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--callout-note-border);
+  border-radius: 0.5rem;
+  background: var(--callout-note-bg);
+}
+.hostidian-callout[data-kind="tip"] {
+  border-color: var(--callout-tip-border);
+  background: var(--callout-tip-bg);
+}
+.hostidian-callout[data-kind="warning"] {
+  border-color: var(--callout-warning-border);
+  background: var(--callout-warning-bg);
+}
+.hostidian-callout[data-kind="danger"] {
+  border-color: var(--callout-danger-border);
+  background: var(--callout-danger-bg);
+}
+.hostidian-callout__icon {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 1.15em;
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
+}
+.hostidian-callout__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.hostidian-page-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  padding: 0 0.35em;
+  border-radius: 0.3em;
+  background: var(--page-link-bg);
+  color: var(--page-link-fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+.hostidian-page-link:hover,
+.hostidian-page-link:focus-visible {
+  background: var(--page-link-bg-hover);
+}
+.hostidian-page-link__glyph {
+  align-self: center;
+  opacity: 0.7;
+}
+.hostidian-page-link__title {
+  text-decoration: underline;
+  text-decoration-color: rgb(127 127 127 / 0.5);
+  text-underline-offset: 0.15em;
+}

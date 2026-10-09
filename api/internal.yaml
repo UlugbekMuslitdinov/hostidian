@@ -110,7 +110,11 @@ paths:
                 editorId: { type: string, format: uuid }
       responses:
         '204': { description: Imported }
+        '404': { $ref: '#/components/responses/NotFound' }   # page row missing
         '422': { $ref: '#/components/responses/Validation' }
+        '500':
+          description: The document was stored but pushing the extracted content to the API failed after ~3 quick retries (caller should retry the whole call; it is idempotent)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
 
   /internal/health:
     get:

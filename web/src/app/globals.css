@@ -1,0 +1,200 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens. Warm neutral palette in the spirit of Notion; all colours are CSS variables so the
+ * light/dark switch (next-themes toggles `.dark` on <html>) is a pure variable swap.
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #37352f;
+  --card: #ffffff;
+  --card-foreground: #37352f;
+  --popover: #ffffff;
+  --popover-foreground: #37352f;
+  --primary: #1f76d1;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f1ef;
+  --secondary-foreground: #37352f;
+  --muted: #f7f7f5;
+  --muted-foreground: #6b6a66;
+  --accent: #efefed;
+  --accent-foreground: #37352f;
+  --destructive: #c93c37;
+  --destructive-foreground: #ffffff;
+  --success: #2b7a4b;
+  --warning: #9a6700;
+  --border: #e6e5e1;
+  --input: #d9d8d3;
+  --ring: #2383e2;
+  --sidebar: #f7f7f5;
+  --sidebar-foreground: #37352f;
+  --sidebar-accent: #ebebe8;
+  --sidebar-border: #ebebe8;
+  --radius: 0.375rem;
+  --sidebar-width: 260px;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #191919;
+  --foreground: #ebebea;
+  --card: #1f1f1f;
+  --card-foreground: #ebebea;
+  --popover: #252525;
+  --popover-foreground: #ebebea;
+  --primary: #1f6fc5;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2b2b;
+  --secondary-foreground: #ebebea;
+  --muted: #202020;
+  --muted-foreground: #a3a29e;
+  --accent: #2f2f2f;
+  --accent-foreground: #ebebea;
+  --destructive: #e5534b;
+  --destructive-foreground: #ffffff;
+  --success: #4cb782;
+  --warning: #e0a93b;
+  --border: #323232;
+  --input: #3d3d3d;
+  --ring: #3b9bf0;
+  --sidebar: #202020;
+  --sidebar-foreground: #ebebea;
+  --sidebar-accent: #2c2c2c;
+  --sidebar-border: #2c2c2c;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --radius-xs: calc(var(--radius) - 3px);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --shadow-popover: 0 0 0 1px rgb(15 15 15 / 0.05), 0 3px 6px rgb(15 15 15 / 0.1), 0 9px 24px rgb(15 15 15 / 0.2);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans text-sm antialiased;
+    line-height: 1.5;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--ring) 28%, transparent);
+  }
+
+  button,
+  [role="button"],
+  [role="tab"],
+  a {
+    touch-action: manipulation;
+  }
+
+  /* Subtle, thin scrollbars (Firefox + WebKit) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 20%, transparent);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* Safe-area helpers for notched phones (viewport-fit=cover is set in the root layout). */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

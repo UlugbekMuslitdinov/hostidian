@@ -49,6 +49,7 @@ Related: `api/openapi.yaml` (public REST API), `api/internal.yaml` (service-to-s
   - workspace `owner`/`admin` → always `full` on every page in the workspace (including private pages — documented trade-off),
   - base for `workspace` visibility and role `member` → `edit`; for `guest` → `none`,
   - base for `private` roots → `full` for `created_by`, else `none`.
+  - **Creator ownership:** the user in `pages.created_by` holds an implicit `full` grant on that page, inherited by its descendants like any explicit grant (so members can archive/share/delete the pages they created). At the same level the implicit grant is combined with an explicit one by `max`; a nearer explicit grant on a descendant (e.g. an explicit `view` for the creator) still overrides it per the nearest-wins rule. Guests who created a page (via a `full`/`edit` grant) get the same.
   - Instance admins have **no** implicit access to workspaces they are not members of.
 - `view` = read; `comment` = read + comment; `edit` = + edit content/title/move children/upload; `full` = + share, permissions, delete/archive, visibility.
 - **404 not 403** when effective role is `none` (do not reveal existence). 403 when role is insufficient but ≥ `view`.
@@ -57,7 +58,7 @@ Related: `api/openapi.yaml` (public REST API), `api/internal.yaml` (service-to-s
 
 ## 4. Page tree & ordering
 
-- `pages.position` is a **fractional index string** (Go: `github.com/rocicorp/fracdex`; TS: `fractional-indexing` — same algorithm). Siblings are ordered by `(position COLLATE "C", id)`. Collation must be `"C"` (the column is declared that way in the schema).
+- `pages.position` is a **fractional index string** (Go: `roci.dev/fracdex`; TS: `fractional-indexing` — same algorithm). Siblings are ordered by `(position COLLATE "C", id)`. Collation must be `"C"` (the column is declared that way in the schema).
 - `POST /pages/{id}/move` takes `{parentId, afterId?, beforeId?}`; the server computes the new position. Omitting both appends. Cycles (moving into own descendant) → 422.
 - Clients may compute an optimistic position locally but the server value always wins; the next tree fetch/SSE event overrides.
 - Page **title and metadata live in Postgres** (REST). Page **content lives in the Y.Doc** (collab). The Y.Doc has no title block.
@@ -95,7 +96,8 @@ Rules: (1) **never send an event about a page the subscriber cannot view** (the 
 ## 8. Markdown format
 
 Stored in `page_content.markdown` (GitHub-flavoured, from BlockNote's `blocksToMarkdownLossy`), plus these extensions:
-- Page links: `[[hostidian:<pageUuid>|<title at time of save>]]`
+- Page links: `[[hostidian:<pageUuid>|<title at time of save>]]`. Inside the title, `\` and `]` are escaped as `\\` and `\]`; inside a GFM table row `|` is escaped as `\|` (also the separator). Go must parse with: `\[\[hostidian:([0-9a-f-]{36})\\?\|((?:\\.|[^\]\\])*)\]\]` (group 2 = escaped title; unescape `\x` → `x`).
+- Audio/video blocks export as plain links `[name](url)`; captioned images as `![caption](url)`. Export is **lossy** by design (no underline/colour; BlockNote does not escape Markdown characters) — `page_content.blocks` (JSON) is the lossless representation, Markdown is for search/export/import.
 - Images: `![alt](/api/files/<attachmentId>)`; other files: `[name](/api/files/<attachmentId>)`
 - Callout block: `> [!note] text` (Obsidian/GitHub style callouts; `note|tip|warning|danger`)
 - Internal `plaintext` is the visible text only (no markup), used for FTS.

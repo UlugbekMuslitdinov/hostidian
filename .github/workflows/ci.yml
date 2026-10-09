@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.10.0"
+
+jobs:
+  api-spec:
+    name: OpenAPI specs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Uses redocly.yaml from the repository root.
+      - run: npx --yes @redocly/cli@2.54.2 lint api/openapi.yaml api/internal.yaml
+
+  go:
+    name: Go (vet, format, generated code, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - name: Generated code is up to date
+        run: |
+          go generate ./...
+          if [ -n "$(git status --porcelain -- .)" ]; then
+            git status --short -- .
+            git --no-pager diff --stat -- .
+            echo "::error::generated Go code is out of date; run 'make gen' and commit the result"
+            exit 1
+          fi
+      # Integration tests start Postgres through testcontainers; Docker is available on ubuntu runners.
+      - run: go test -count=1 -timeout 15m ./...
+
+  node:
+    name: Node (types, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: API types are up to date
+        run: |
+          pnpm gen:api
+          if [ -n "$(git status --porcelain -- packages/api-types)" ]; then
+            git status --short -- packages/api-types
+            git --no-pager diff --stat -- packages/api-types
+            echo "::error::packages/api-types is out of date; run 'make gen' and commit the result"
+            exit 1
+          fi
+      # e2e needs a running stack and is excluded from the generic recursive runs.
+      - run: pnpm -r --filter '!@hostidian/e2e' --if-present run typecheck
+      - run: pnpm -r --filter '!@hostidian/e2e' --if-present run lint
+      - run: pnpm -r --filter '!@hostidian/e2e' --if-present run test
+      - uses: actions/cache@v6
+        with:
+          path: web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('web/src/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm -r --filter '!@hostidian/e2e' --if-present run build
+
+  docker:
+    name: Image (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: ./backend
+            file: backend/Dockerfile
+          - name: collab
+            context: .
+            file: collab/Dockerfile
+          - name: web
+            context: .
+            file: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # Build only (never pushed from CI); releases push from release.yml.
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  deploy-config:
+    name: Compose, Caddy and scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Compose files parse with a generated .env
+        run: |
+          scripts/gen-env.sh --yes
+          docker compose config -q
+          docker compose -f docker-compose.dev.yml --profile proxy config -q
+      - name: Caddyfiles are valid
+        run: |
+          docker run --rm -e DOMAIN=localhost -v "$PWD/deploy:/etc/caddy:ro" caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm -v "$PWD/deploy:/etc/caddy:ro" caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile.dev --adapter caddyfile

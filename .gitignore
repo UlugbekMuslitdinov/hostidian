@@ -24,3 +24,4 @@ data/
 playwright-report/
 test-results/
 .pnpm-lock.d/
+backups/
