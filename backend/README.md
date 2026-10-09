@@ -47,10 +47,8 @@ Generated code **is checked in**, so a fresh clone builds without running the ge
 `internal/httpapi/gen/api.gen.go` and `internal/db/sqlcgen/*.go`. Re-run `go generate ./...` after
 touching `../api/openapi.yaml`, `migrations/` or `queries/`.
 
-`scripts/gen-openapi.sh` feeds the contract to oapi-codegen through a temp copy in which one
-description (`… or to /login?error=…`) is quoted: that line is valid for YAML 1.2 parsers (the JS
-tooling) but not for the YAML 1.1 parser inside oapi-codegen. It becomes a no-op once the contract
-line is quoted.
+`scripts/gen-openapi.sh` runs oapi-codegen against `../api/openapi.yaml`. Keep the contract YAML-1.1-safe
+(quote any description containing `: `, `?` or `…` inside flow mappings): the Go parser is stricter than the JS tooling.
 
 Tests use [testcontainers-go](https://golang.testcontainers.org/) with `postgres:17-alpine`: one
 container per test package, one throw-away database per test (cloned from a migrated template), so

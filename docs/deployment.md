@@ -58,7 +58,8 @@ All settings live in `.env` (template: [`.env.example`](../.env.example)). Compo
 | `COLLAB_INTERNAL_URL` | `http://collab:1235` | api | Where the API reaches the collab internal port. |
 | `COLLAB_PUBLIC_URL` | derived | api | WebSocket URL handed to browsers. Empty = `wss://<host of PUBLIC_URL>/collab`. |
 | `DATA_DIR` | `/data` | api | Uploaded files (volume `appdata`). |
-| `MAX_UPLOAD_MB` | `50` | api | Per-file upload limit. Caddy allows request bodies up to 512 MB for `/api/*` (zip imports). |
+| `MAX_UPLOAD_MB` | `50` | api | Per-file upload limit. |
+| `MAX_IMPORT_MB` | `500` | api | Max size of an imported Markdown/Obsidian zip. Caddy allows request bodies up to 512 MB for `/api/*`. |
 | `LOG_LEVEL` | `info` | api, collab | `debug`, `info`, `warn`, `error`. |
 | `COLLAB_PORT` | `1234` | collab | WebSocket port (behind Caddy at `/collab`). |
 | `COLLAB_INTERNAL_PORT` | `1235` | collab | Internal HTTP port. Never publish it. |
