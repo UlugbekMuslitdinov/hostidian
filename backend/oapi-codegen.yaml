@@ -1,0 +1,13 @@
+# Generates the chi ServerInterface + request/response models from the public contract.
+# Run: go generate ./...   (see generate.go)
+package: gen
+output: internal/httpapi/gen/api.gen.go
+generate:
+  chi-server: true
+  models: true
+  # GetSwagger() lets the server derive "which operations need a session" from the contract itself
+  # (this oapi-codegen version emits no CookieAuthScopes context key for apiKey-in-cookie schemes).
+  embedded-spec: true
+output-options:
+  # Keep every schema in the contract, even ones no operation references directly.
+  skip-prune: true

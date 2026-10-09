@@ -1,0 +1,25 @@
+# Build context = ./backend
+
+# Build output and local state
+bin
+tmp
+data
+*.log
+coverage.out
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# VCS / editor / OS
+.git
+.idea
+.vscode
+.DS_Store
+
+# Not needed to compile the binary (tests run in CI, not in the image build)
+**/*_test.go
+Dockerfile*
+.dockerignore
+*.md
