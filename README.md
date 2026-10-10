@@ -44,6 +44,8 @@ Everything is configured through `.env` (template: [`.env.example`](.env.example
 
 Every variable, with defaults and which service uses it, is documented in [docs/deployment.md](docs/deployment.md#configuration).
 
+**Deploying on Coolify?** Use `docker-compose.coolify.yml`, not `docker-compose.yml`: [docs/deployment.md#coolify](docs/deployment.md#coolify).
+
 ## Operations
 
 | Task | Command |

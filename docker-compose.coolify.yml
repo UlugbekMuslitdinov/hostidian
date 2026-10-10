@@ -1,0 +1,140 @@
+# Hostidian for Coolify (https://coolify.io): Build Pack "Docker Compose", compose file /docker-compose.coolify.yml.
+# See docs/deployment.md -> "Coolify".
+#
+# Differences from docker-compose.yml, all on purpose:
+#   * no published host ports: Coolify's proxy owns 80/443 and forwards to the `caddy` service on port 80
+#     (set the domain of the `caddy` service to https://<your-domain>:80 in the Coolify UI; TLS ends there)
+#   * Caddy runs in plain-HTTP mode (DOMAIN=:80) with its Caddyfile baked into the image (no bind mount)
+#   * DATABASE_URL is always built from POSTGRES_PASSWORD (a stale DATABASE_URL variable cannot break the login)
+#   * flat YAML: no anchors / merge keys, one default network, nothing that older compose validators dislike
+#
+# Required variables (Coolify "Environment Variables"): POSTGRES_PASSWORD, COLLAB_JWT_SECRET, INTERNAL_TOKEN,
+# APP_SECRET (each a long random string, e.g. `openssl rand -base64 48`) and PUBLIC_URL (https://<your-domain>).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    init: true
+    environment:
+      POSTGRES_USER: hostidian
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (a long random string)}
+      POSTGRES_DB: hostidian
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hostidian -d hostidian"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      API_ADDR: ":8080"
+      INTERNAL_ADDR: ":8081"
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL to your public address, e.g. https://notes.example.com}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      DATABASE_URL: postgres://hostidian:${POSTGRES_PASSWORD}@postgres:5432/hostidian?sslmode=disable
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?Set COLLAB_JWT_SECRET (a long random string)}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set INTERNAL_TOKEN (a long random string)}
+      APP_SECRET: ${APP_SECRET:?Set APP_SECRET (a long random string)}
+      COLLAB_INTERNAL_URL: http://collab:1235
+      COLLAB_PUBLIC_URL: ${COLLAB_PUBLIC_URL:-}
+      DATA_DIR: /data
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      MAX_IMPORT_MB: ${MAX_IMPORT_MB:-500}
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-Single sign-on}
+    volumes:
+      - appdata:/data
+    stop_grace_period: 30s
+
+  collab:
+    build:
+      context: .
+      dockerfile: collab/Dockerfile
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      COLLAB_PORT: "1234"
+      COLLAB_INTERNAL_PORT: "1235"
+      API_INTERNAL_URL: http://api:8081
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL to your public address, e.g. https://notes.example.com}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      DATABASE_URL: postgres://hostidian:${POSTGRES_PASSWORD}@postgres:5432/hostidian?sslmode=disable
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?Set COLLAB_JWT_SECRET (a long random string)}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set INTERNAL_TOKEN (a long random string)}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    stop_grace_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+
+  # Single-origin router: /api -> api, /collab -> collab (WebSocket), /internal* -> 404, the rest -> web.
+  # This is the service Coolify's proxy talks to: give it the domain, container port 80.
+  caddy:
+    build:
+      context: ./deploy
+      dockerfile: caddy.Dockerfile
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api:
+        condition: service_healthy
+      collab:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      DOMAIN: ":80"
+    expose:
+      - "80"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:

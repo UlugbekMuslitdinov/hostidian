@@ -186,6 +186,45 @@ Traefik proxies WebSockets and streams SSE without extra configuration; do not e
 
 You can also skip the bundled Caddy and route straight to the containers: `/api/*` to `api:8080`, `/collab` to `collab:1234` (strip the `/collab` prefix), everything else to `web:3000`, and return 404 for `/internal*`. That needs your proxy to join the Compose network and is not recommended unless you have a reason.
 
+## Coolify
+
+[Coolify](https://coolify.io) already runs its own reverse proxy on ports 80/443 and issues the certificates, so use the
+dedicated **`docker-compose.coolify.yml`** instead of `docker-compose.yml` (which publishes 80/443 itself and would
+collide with Coolify's proxy). It has no host ports, runs Caddy in plain-HTTP mode behind Coolify's proxy with the Caddyfile
+baked into the image (no bind mount), builds `DATABASE_URL` from `POSTGRES_PASSWORD` and uses flat YAML that older compose
+validators accept.
+
+1. **New resource** → your Git repository (`https://github.com/UlugbekMuslitdinov/hostidian`, branch `main`) → build pack
+   **Docker Compose**. Base directory `/`, Docker Compose location **`/docker-compose.coolify.yml`**.
+2. **Environment variables** (Production). All five are required:
+
+   | Variable | Value |
+   |---|---|
+   | `PUBLIC_URL` | `https://<your-domain>` (no trailing slash; it must be exactly what people type in the browser) |
+   | `POSTGRES_PASSWORD` | a long random string |
+   | `COLLAB_JWT_SECRET` | a long random string |
+   | `INTERNAL_TOKEN` | a long random string |
+   | `APP_SECRET` | a long random string |
+
+   Generate each secret with `openssl rand -base64 48`. Optional: `ALLOWED_ORIGINS`, `MAX_UPLOAD_MB`, `MAX_IMPORT_MB`,
+   `MCP_ENABLED`, `OIDC_*` (see the table above). **Do not set `DATABASE_URL`, `DOMAIN`, `HTTP_PORT` or `HTTPS_PORT`**: they
+   belong to `docker-compose.yml` and are ignored here.
+3. **Domain**: in the resource's service list open **`caddy`** and set its domain to **`https://<your-domain>:80`** (the
+   `:80` tells Coolify which container port to forward to). Leave the other services without a domain. Coolify terminates
+   TLS (needed for the PWA and service worker); the WebSocket (`/collab`) and the event stream (`/api/.../events`) pass
+   through its proxy without extra settings.
+4. **Deploy**, then open the URL and create the first account (it becomes the instance admin).
+
+Notes
+
+* Volumes `pgdata` (database) and `appdata` (uploaded files) hold your data; keep them when redeploying. Back up the database
+  with `docker exec <postgres-container> pg_dump -U hostidian hostidian | gzip > hostidian.sql.gz` and copy the `appdata`
+  volume.
+* Behind two proxies the API sees Coolify's proxy as the client address, so the "sessions" list shows that address and the
+  login rate limit is keyed on proxy + email rather than on the visitor's IP.
+* If the deploy fails at validation with `services.<name>.entrypoint must be a null`, you are using an old checkout of
+  `docker-compose.yml`; pull the latest and use `docker-compose.coolify.yml`.
+
 ## Installing the PWA on a phone
 
 Install prompts, the service worker and offline mode only work over a trusted HTTPS origin. Options, easiest first:

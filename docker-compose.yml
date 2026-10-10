@@ -148,7 +148,6 @@ services:
   tools:
     image: postgres:17-alpine
     profiles: [tools]
-    entrypoint: []
     environment:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER:-hostidian}
