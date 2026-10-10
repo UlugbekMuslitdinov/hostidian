@@ -3,11 +3,11 @@
 import { EmojiPicker } from "frimousse";
 
 /**
- * Emoji data is fetched by frimousse from the emojibase-data package on a CDN by default. Self-hosters
- * who don't want that request can host `emojibase-data/en/{data,messages}.json` and set
- * NEXT_PUBLIC_EMOJIBASE_URL at build time.
+ * frimousse downloads its emoji data from a CDN unless told where it lives. The data (emojibase-data, `en` locale)
+ * is served from public/emoji instead (refresh it with `pnpm -F @hostidian/web emoji`): self-hosted installs make
+ * no third-party requests, and the service worker precaches it, so the picker also works offline.
  */
-const EMOJIBASE_URL = process.env.NEXT_PUBLIC_EMOJIBASE_URL || undefined;
+const EMOJIBASE_URL = "/emoji";
 
 export function EmojiPickerPanel({ onSelect }: { onSelect: (emoji: string) => void }) {
   return (

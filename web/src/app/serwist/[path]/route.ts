@@ -26,7 +26,7 @@ export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } =
     ".next/static/**/*.{js,css,woff2,woff,ico,png,svg,webp,avif,json}",
     "public/**/*",
   ],
-  globIgnores: ["**/*.map", "public/icons/*.svg"],
+  globIgnores: ["**/*.map", "public/icons/*.svg", "public/emoji/LICENSE.txt"],
   // The editor chunks are large; the default 2 MiB limit would silently drop them from the precache.
   maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
   additionalPrecacheEntries: PRECACHED_DOCUMENTS.map((url) => ({ url, revision })),

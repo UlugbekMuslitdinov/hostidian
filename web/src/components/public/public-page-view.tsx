@@ -9,8 +9,10 @@ import { LogoMark } from "@/components/common/logo";
 import { PageIcon } from "@/components/common/page-icon";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { hasStatus, isNetworkError } from "@/lib/api/error";
 import { PublicBlocks } from "./public-blocks";
+import { PublicBlocksBoundary } from "./public-blocks-boundary";
 import { PublicPageTree } from "./public-page-tree";
 import { allowedPageIds, publicCoverBackground, publicPagePath, publicPageTitles } from "./public-share";
 import { usePublicPage } from "./use-public-page";
@@ -44,6 +46,7 @@ function SiteHeader() {
 function PublicPageContent({ token, data }: { token: string; data: PublicPage }) {
   const router = useRouter();
   const { page, tree, rootPageId, includeSubpages } = data;
+  useDocumentTitle(page.title || "Untitled");
 
   const ids = useMemo(() => allowedPageIds(rootPageId, tree), [rootPageId, tree]);
   const titles = useMemo(() => publicPageTitles(tree), [tree]);
@@ -84,14 +87,15 @@ function PublicPageContent({ token, data }: { token: string; data: PublicPage })
             </header>
 
             <div data-page-editor="" className="mt-4">
-              <PublicBlocks
-                key={page.id}
-                blocks={data.blocks}
-                token={token}
-                allowedPageIds={ids}
-                titles={titles}
-                onNavigate={onNavigate}
-              />
+              <PublicBlocksBoundary key={page.id}>
+                <PublicBlocks
+                  blocks={data.blocks}
+                  token={token}
+                  allowedPageIds={ids}
+                  titles={titles}
+                  onNavigate={onNavigate}
+                />
+              </PublicBlocksBoundary>
             </div>
           </article>
         </main>

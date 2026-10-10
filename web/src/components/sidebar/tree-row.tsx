@@ -35,7 +35,7 @@ export interface TreeRowProps {
 }
 
 const actionButton =
-  "grid h-full w-9 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground md:size-6 md:h-6";
+  "grid w-9 shrink-0 self-stretch place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground md:size-6 md:h-6";
 
 export function TreeRow(props: TreeRowProps) {
   const {
@@ -120,7 +120,7 @@ export function TreeRow(props: TreeRowProps) {
           onToggle(item.id);
         }}
         className={cn(
-          "grid h-full w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/8 disabled:pointer-events-none md:size-6 md:h-6",
+          "grid w-8 shrink-0 self-stretch place-items-center rounded-md text-muted-foreground hover:bg-foreground/8 disabled:pointer-events-none md:size-6 md:h-6 md:self-auto",
           !item.hasChildren && "invisible",
         )}
       >
@@ -149,7 +149,7 @@ export function TreeRow(props: TreeRowProps) {
       {!renaming && (
         <div
           className={cn(
-            "flex h-full shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
+            "flex shrink-0 items-stretch gap-0.5 self-stretch opacity-0 md:items-center md:self-auto transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
             menuOpen && "opacity-100",
           )}
         >

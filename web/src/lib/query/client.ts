@@ -3,8 +3,12 @@ import { toast } from "sonner";
 import { errorMessage, hasStatus, isTransientError } from "../api/error";
 import { qk } from "../api/keys";
 
-/** Persisted caches (wave 2) must not outlive this, so queries are kept at least this long. */
-export const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long unused queries stay in memory. TanStack requires this to be >= the persisted cache's `maxAge`
+ * (lib/offline/persister.ts PERSIST_MAX_AGE_MS), otherwise restored queries would be garbage-collected right
+ * after they are restored (a test keeps the two in step).
+ */
+export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Retry transport failures and 5xx gateway blips a couple of times; never retry 4xx. */
 function retryQuery(failureCount: number, error: unknown): boolean {

@@ -2,7 +2,16 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { PresenceProvider, PresenceStack, usePresence, usePublishPresence, type PresenceUser } from "./presence";
+import { ConnectionIndicator, connectionLabel } from "@/components/editor/connection-indicator";
+import type { ConnectionState } from "@/lib/collab/connection";
+import {
+  PresenceProvider,
+  PresenceStack,
+  usePresence,
+  usePublishConnection,
+  usePublishPresence,
+  type PresenceUser,
+} from "./presence";
 
 const ada: PresenceUser = { id: "u1", name: "Ada Lovelace", color: "#64b5f6" };
 const grace: PresenceUser = { id: "u2", name: "Grace Hopper", color: "#81c784" };
@@ -50,5 +59,41 @@ describe("presence slot", () => {
   it("renders nothing outside a provider or without users", () => {
     const { container } = render(<PresenceStack users={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("connection pipe", () => {
+  function Publisher({ state }: { state: ConnectionState }) {
+    usePublishConnection(state);
+    return null;
+  }
+
+  it("shows nothing until the editor publishes, then follows its state, then clears on unmount", () => {
+    const { rerender } = render(
+      <PresenceProvider>
+        <ConnectionIndicator editable />
+      </PresenceProvider>,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    const tree = (state: ConnectionState | null) => (
+      <PresenceProvider>
+        <ConnectionIndicator editable />
+        {state ? <Publisher state={state} /> : null}
+      </PresenceProvider>
+    );
+    rerender(tree("syncing"));
+    expect(screen.getByRole("status")).toHaveAttribute("data-connection", "syncing");
+    expect(screen.getByRole("status")).toHaveTextContent("Saving…");
+    rerender(tree("offline"));
+    expect(screen.getByRole("status")).toHaveAttribute("data-connection", "offline");
+    rerender(tree(null));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("words a healthy connection as Live for people who cannot edit", () => {
+    expect(connectionLabel("synced", true)).toBe("Saved");
+    expect(connectionLabel("synced", false)).toBe("Live");
+    expect(connectionLabel("offline", false)).toMatch(/Offline/);
   });
 });

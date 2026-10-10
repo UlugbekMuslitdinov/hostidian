@@ -9,7 +9,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "icons": "node scripts/generate-icons.mjs",
+    "emoji": "node scripts/copy-emoji-data.mjs"
   },
   "dependencies": {
     "@blocknote/core": "^0.55.0",

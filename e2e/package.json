@@ -4,6 +4,14 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hostidian/api-types": "workspace:^",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.4",
+    "fflate": "^0.8.3",
+    "typescript": "^5.9.3"
   }
 }

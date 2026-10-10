@@ -3,7 +3,9 @@
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 import "@hostidian/editor-schema/styles.css";
+import "@/components/editor/editor.css";
 
+import { useTheme } from "next-themes";
 import { useMemo } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
@@ -37,11 +39,13 @@ export function PublicBlocks({
 
   // No collaboration: the editor is built once from the stored content. The parent remounts this
   // component (via `key`) when navigating to another shared page.
-  const editor = useCreateBlockNote({ schema, initialContent }, []);
+  // BlockNote refuses an empty `initialContent` array (a page nobody has written in yet), so give it none.
+  const editor = useCreateBlockNote({ schema, initialContent: initialContent.length > 0 ? initialContent : undefined }, []);
+  const resolvedTheme = useTheme().resolvedTheme;
 
   return (
     <PageLinkContext.Provider value={{ resolve: (id) => titles.get(id.toLowerCase()), onNavigate }}>
-      <BlockNoteView editor={editor} editable={false} />
+      <BlockNoteView editor={editor} editable={false} theme={resolvedTheme === "dark" ? "dark" : "light"} className="hostidian-editor" />
     </PageLinkContext.Provider>
   );
 }

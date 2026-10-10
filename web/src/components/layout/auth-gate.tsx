@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { FullPageSpinner } from "@/components/common/spinner";
+import { IdentityGate } from "@/components/pwa/identity-gate";
+import { useOptionalOfflineRuntime } from "@/lib/offline/context";
 import { Button } from "@/components/ui/button";
 import { instanceInfoOptions, meOptions } from "@/lib/api/queries";
 import { hasStatus, isNetworkError } from "@/lib/api/error";
@@ -16,9 +18,17 @@ import { SessionProvider, wasIntentionalLogout } from "@/lib/session";
 export function AuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const me = useQuery(meOptions());
+  const runtime = useOptionalOfflineRuntime();
+  // `always`: an identity restored from the offline cache is only a claim until the server confirms it.
+  const me = useQuery({ ...meOptions(), refetchOnMount: "always" });
 
   const unauthorized = hasStatus(me.error, 401);
+  // Restored from the previous session and being re-checked right now. While it is, nothing of that identity may
+  // render: the session may have ended (cookie expired, revoked elsewhere), in which case showing the cached
+  // workspace would hand it to whoever opens the app next. Offline (the check is paused) or when the server cannot
+  // be reached (it failed), the cached identity is trusted, which is what makes the app usable offline.
+  const verifying =
+    me.data !== undefined && me.fetchStatus === "fetching" && runtime !== null && me.dataUpdatedAt < runtime.startedAt;
   const info = useQuery({ ...instanceInfoOptions(), enabled: unauthorized });
 
   useEffect(() => {
@@ -35,7 +45,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [unauthorized, info.data, info.isError, router, pathname]);
 
   if (unauthorized) return <FullPageSpinner label="Redirecting to sign in…" />;
-  if (me.data) return <SessionProvider me={me.data}>{children}</SessionProvider>;
+  if (me.data && verifying) return <FullPageSpinner label="Checking your session…" />;
+  if (me.data) {
+    return (
+      <IdentityGate me={me.data}>
+        <SessionProvider me={me.data}>{children}</SessionProvider>
+      </IdentityGate>
+    );
+  }
   if (me.isError) {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">

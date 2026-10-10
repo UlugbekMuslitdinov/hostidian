@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* BlockNote's shadcn components carry Tailwind class names (ring-foreground/10, ...) that only exist inside the
+   package; Tailwind skips node_modules unless told. Without this the editor's menus lose their shadows/rings. */
+@source "../../node_modules/@blocknote/shadcn/dist/blocknote-shadcn.js";
+
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -117,6 +121,8 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    /* Installed app: no pull-to-refresh / rubber-band over the app frame (the page scrolls inside <main>). */
+    overscroll-behavior: none;
   }
 
   body {
@@ -124,6 +130,12 @@
     line-height: 1.5;
     min-height: 100dvh;
     overflow-x: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* Long-press starts a drag on the page tree; keep iOS from opening its callout / selection UI instead. */
+  [data-tree-row] {
+    -webkit-touch-callout: none;
   }
 
   :focus-visible {
@@ -164,8 +176,9 @@
 
 @layer utilities {
   /* Safe-area helpers for notched phones (viewport-fit=cover is set in the root layout). */
+  /* `--safe-top` lets a banner that already sits in the inset (offline banner) switch it off for what follows. */
   .pt-safe {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--safe-top, env(safe-area-inset-top, 0px));
   }
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);

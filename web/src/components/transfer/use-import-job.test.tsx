@@ -7,7 +7,7 @@ import { qk } from "@/lib/api/keys";
 import { UploadError, uploadMultipart } from "@/lib/files/upload";
 import { jsonResponse, routeFetch } from "@/test/fetch-mock";
 import { makeTestQueryClient } from "@/test/render";
-import { validateImportFile, useImportJob } from "./use-import-job";
+import { describeJobError, validateImportFile, useImportJob } from "./use-import-job";
 
 vi.mock("sonner", () => ({
   toast: { loading: vi.fn(() => "toast-id"), success: vi.fn(), error: vi.fn() },
@@ -127,5 +127,14 @@ describe("useImportJob", () => {
     expect(result.current.state.phase).toBe("processing");
     act(() => result.current.reset());
     expect(result.current.state.phase).toBe("idle");
+  });
+});
+
+describe("describeJobError", () => {
+  it("drops the machine-readable code prefix the API puts in front of a job's error", () => {
+    expect(describeJobError("bad_request: The uploaded file is not a valid zip.")).toBe("The uploaded file is not a valid zip.");
+    expect(describeJobError("Plain message with: a colon")).toBe("Plain message with: a colon");
+    expect(describeJobError(null)).toBe("The import failed.");
+    expect(describeJobError("  ")).toBe("The import failed.");
   });
 });

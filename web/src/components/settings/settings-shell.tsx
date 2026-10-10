@@ -1,10 +1,11 @@
 "use client";
 
-import { Lock, ShieldCheck, SlidersHorizontal, User } from "lucide-react";
+import { Lock, ShieldCheck, SlidersHorizontal, User, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { TopBar } from "@/components/layout/topbar";
+import { useOnline } from "@/lib/offline/context";
 import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ export function SettingsShell({
 }) {
   const pathname = usePathname();
   const { user } = useSession();
+  const online = useOnline();
   const links = area === "settings" ? settingsLinks : adminLinks;
 
   return (
@@ -85,7 +87,27 @@ export function SettingsShell({
               </Link>
             )}
           </nav>
-          <div className="min-w-0 flex-1">{children}</div>
+          <div className="min-w-0 flex-1">
+            {online ? null : (
+              <p
+                role="status"
+                data-testid="settings-offline-note"
+                className="mb-5 flex items-start gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground"
+              >
+                <WifiOff className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  You&apos;re offline.{" "}
+                  {area === "admin"
+                    ? "Instance administration needs a connection."
+                    : "Account, security, workspace and invite settings need a connection to be saved."}
+                </span>
+              </p>
+            )}
+            {/* A disabled fieldset disables every form control inside it, which is exactly "read-only while offline". */}
+            <fieldset disabled={!online} className="m-0 min-w-0 border-0 p-0">
+              {children}
+            </fieldset>
+          </div>
         </div>
       </div>
     </>

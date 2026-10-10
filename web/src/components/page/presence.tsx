@@ -3,11 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { UserAvatar } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ConnectionState } from "@/lib/collab/connection";
 
 /**
- * Presence is a one-way pipe: the editor (wave 2) reads Yjs awareness and calls
- * `usePublishPresence(users)`; the page header renders whatever was published via <PresenceStack/>.
- * Nothing here knows about Yjs.
+ * Presence is a one-way pipe: the editor reads Yjs awareness and calls `usePublishPresence(users)`; the page
+ * header renders whatever was published via <PresenceStack/>. The collaboration connection state travels the same
+ * way (`usePublishConnection` / `useConnection`) so the page chrome can show it. Nothing here knows about Yjs.
  */
 export interface PresenceUser {
   id: string;
@@ -18,18 +19,24 @@ export interface PresenceUser {
 interface PresenceContextValue {
   users: PresenceUser[];
   publish: (users: PresenceUser[]) => void;
+  connection: ConnectionState | null;
+  publishConnection: (state: ConnectionState | null) => void;
 }
 
 const PresenceContext = createContext<PresenceContextValue | null>(null);
 
 export function PresenceProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<PresenceUser[]>([]);
+  const [connection, publishConnection] = useState<ConnectionState | null>(null);
   // Stable identity: publishers list it as an effect dependency, so it must not change with `users`.
   const publish = useCallback(
     (next: PresenceUser[]) => setUsers((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next)),
     [],
   );
-  const value = useMemo<PresenceContextValue>(() => ({ users, publish }), [users, publish]);
+  const value = useMemo<PresenceContextValue>(
+    () => ({ users, publish, connection, publishConnection }),
+    [users, publish, connection],
+  );
   return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>;
 }
 
@@ -47,6 +54,20 @@ export function usePublishPresence(users: PresenceUser[]): void {
     publish?.(JSON.parse(serialized) as PresenceUser[]);
     return () => publish?.([]);
   }, [publish, serialized]);
+}
+
+/** For the editor: publish the collaboration connection state; cleared on unmount. */
+export function usePublishConnection(state: ConnectionState): void {
+  const publish = useContext(PresenceContext)?.publishConnection;
+  useEffect(() => {
+    publish?.(state);
+    return () => publish?.(null);
+  }, [publish, state]);
+}
+
+/** The connection state the editor published; `null` until it has mounted. */
+export function useConnection(): ConnectionState | null {
+  return useContext(PresenceContext)?.connection ?? null;
 }
 
 export function PresenceStack({ users, max = 4 }: { users: PresenceUser[]; max?: number }) {

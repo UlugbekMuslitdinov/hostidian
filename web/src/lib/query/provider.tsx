@@ -1,26 +1,33 @@
 "use client";
 
-import { QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
-import { createQueryClient } from "./client";
-import { setupMutationDefaults } from "./mutations";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { useEffect, useState, type ReactNode } from "react";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
+import { OfflineRuntimeProvider } from "@/lib/offline/context";
+import { createOfflineRuntime } from "@/lib/offline/runtime";
 
+/**
+ * The query client with offline persistence (see lib/offline/runtime.ts for the wiring):
+ *
+ *  - the cache and the queue of unsent mutations are restored from IndexedDB before queries run
+ *    (`PersistQueryClientProvider` keeps them paused while restoring), under the signed-in user's namespace;
+ *  - once restored, queued mutations are replayed (`resumePausedMutations`), and again whenever the connectivity
+ *    monitor reports the server reachable;
+ *  - the PWA runtime (service worker, install prompt, theme color) lives below it so it shares the toaster.
+ */
 export function QueryProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(() => {
-    const qc = createQueryClient();
-    // Must be registered before any mutation is created *or restored* from storage.
-    setupMutationDefaults(qc);
-    return qc;
-  });
+  const [runtime] = useState(() => createOfflineRuntime());
+  useEffect(() => runtime.start(), [runtime]);
 
-  // ---------------------------------------------------------------------------------------------
-  // WAVE 2 SEAM (pwa-offline): offline persistence plugs in right here. Replace <QueryClientProvider>
-  // with TanStack's <PersistQueryClientProvider client={client} persistOptions={{ persister, maxAge:
-  // CACHE_MAX_AGE_MS, buster }} onSuccess={() => client.resumePausedMutations()}>, where `persister`
-  // is an idb-keyval based async persister (src/lib/offline). Paused mutations (createPage, renamePage,
-  // movePage, ...) rehydrate and resume because their mutationFn/optimistic handlers live in
-  // setupMutationDefaults() above, keyed by mutationKey. Also register logout cleanup via
-  // registerLogoutCleanup() (src/lib/session-cleanup.ts) to wipe the persisted cache.
-  // ---------------------------------------------------------------------------------------------
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <OfflineRuntimeProvider runtime={runtime}>
+      <PersistQueryClientProvider
+        client={runtime.queryClient}
+        persistOptions={runtime.persistOptions}
+        onSuccess={() => void runtime.queryClient.resumePausedMutations()}
+      >
+        <PwaProvider>{children}</PwaProvider>
+      </PersistQueryClientProvider>
+    </OfflineRuntimeProvider>
+  );
 }

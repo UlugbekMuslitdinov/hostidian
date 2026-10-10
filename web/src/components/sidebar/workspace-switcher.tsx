@@ -18,6 +18,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useOnline } from "@/lib/offline/context";
 import { AppLink } from "@/lib/nav";
 import { useLogout, useSession } from "@/lib/session";
 import { cn, workspaceHref } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function WorkspaceSwitcher() {
   const logout = useLogout();
   const { theme, setTheme } = useTheme();
   const [createOpen, setCreateOpen] = useState(false);
+  const online = useOnline();
 
   return (
     <>
@@ -79,9 +81,10 @@ export function WorkspaceSwitcher() {
               </AppLink>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem onSelect={() => setCreateOpen(true)}>
+          <DropdownMenuItem disabled={!online} onSelect={() => setCreateOpen(true)}>
             <Plus />
             Create workspace
+            {!online && <span className="ml-auto text-xs text-muted-foreground">Needs connection</span>}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
@@ -90,14 +93,21 @@ export function WorkspaceSwitcher() {
               Settings
             </Link>
           </DropdownMenuItem>
-          {user.isInstanceAdmin && (
-            <DropdownMenuItem asChild>
-              <Link href="/admin/users">
+          {user.isInstanceAdmin &&
+            (online ? (
+              <DropdownMenuItem asChild>
+                <Link href="/admin/users">
+                  <ShieldCheck />
+                  Instance admin
+                </Link>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled>
                 <ShieldCheck />
                 Instance admin
-              </Link>
-            </DropdownMenuItem>
-          )}
+                <span className="ml-auto text-xs text-muted-foreground">Needs connection</span>
+              </DropdownMenuItem>
+            ))}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Sun className="dark:hidden" />

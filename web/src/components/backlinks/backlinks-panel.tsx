@@ -30,7 +30,7 @@ export function BacklinksPanel({ pageId }: { pageId: string }) {
   if (backlinks.length === 0) return null;
 
   return (
-    <section className="mt-10 border-t pt-4" aria-label="Linked from">
+    <section aria-label="Linked from">
       <h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <Link2 className="size-3.5" aria-hidden="true" />
         {backlinks.length} page{backlinks.length === 1 ? "" : "s"} link{backlinks.length === 1 ? "s" : ""} here

@@ -4,6 +4,7 @@ import { MessageSquare, MoreHorizontal, Share2, Star } from "lucide-react";
 import { useState } from "react";
 import { useComments } from "@/components/comments/comments-context";
 import { TopBar } from "@/components/layout/topbar";
+import { OnlineOnly } from "@/components/pwa/online-only";
 import { ShareDialog } from "@/components/share/share-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -46,18 +47,22 @@ export function PageHeader({ detail, actions }: { detail: PageDetail; actions: P
               </Button>
             </Tip>
           ) : null}
-          <Button variant="ghost" size="sm" className="ml-1 max-md:hidden" onClick={() => setShareOpen(true)}>
-            Share
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="md:hidden"
-            aria-label="Share"
-            onClick={() => setShareOpen(true)}
-          >
-            <Share2 />
-          </Button>
+          <OnlineOnly reason="Sharing needs a connection." className="ml-1 max-md:hidden">
+            <Button variant="ghost" size="sm" className="ml-1 max-md:hidden" onClick={() => setShareOpen(true)}>
+              Share
+            </Button>
+          </OnlineOnly>
+          <OnlineOnly reason="Sharing needs a connection." className="md:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="md:hidden"
+              aria-label="Share"
+              onClick={() => setShareOpen(true)}
+            >
+              <Share2 />
+            </Button>
+          </OnlineOnly>
           <Tip label={isFavorite ? "Remove from favorites" : "Add to favorites"}>
             <Button
               variant="ghost"

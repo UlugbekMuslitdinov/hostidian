@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Graph } from "@hostidian/api-types";
-import { buildGraphModel, isLinkMatched, matchGraph, nodeRadius } from "./graph-model";
+import { buildGraphModel, isLinkMatched, linkIds, matchGraph, neighborhood, nodeRadius } from "./graph-model";
 
 function graph(partial: Partial<Graph>): Graph {
   return { nodes: [], edges: [], ...partial };
@@ -91,5 +91,54 @@ describe("matchGraph", () => {
     expect(isLinkMatched(model.links[0]!, match.matched)).toBe(false);
     const all = matchGraph(model, "");
     expect(isLinkMatched(model.links[0]!, all.matched)).toBe(true);
+  });
+});
+
+describe("neighborhood", () => {
+  // a -> b -> c -> d, plus e -> a and an unrelated f
+  const model = buildGraphModel(
+    graph({
+      nodes: ["a", "b", "c", "d", "e", "f"].map((id) => ({ id, title: id.toUpperCase() })),
+      edges: [
+        { source: "a", target: "b" },
+        { source: "b", target: "c" },
+        { source: "c", target: "d" },
+        { source: "e", target: "a" },
+      ],
+    }),
+  );
+  const ids = (m: { nodes: { id: string }[] }) => m.nodes.map((n) => n.id).sort();
+
+  it("keeps the centre and its direct neighbours in both link directions at depth 1", () => {
+    const local = neighborhood(model, "a", 1);
+    expect(ids(local)).toEqual(["a", "b", "e"]);
+    expect(local.links).toHaveLength(2);
+  });
+
+  it("widens with depth and ignores unrelated pages", () => {
+    expect(ids(neighborhood(model, "a", 2))).toEqual(["a", "b", "c", "e"]);
+    expect(ids(neighborhood(model, "a", 3))).toEqual(["a", "b", "c", "d", "e"]);
+    expect(ids(neighborhood(model, "a", 99))).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("recomputes degrees for the subset and counts isolated nodes", () => {
+    const local = neighborhood(model, "c", 1);
+    expect(Object.fromEntries(local.nodes.map((n) => [n.id, n.degree]))).toEqual({ b: 1, c: 2, d: 1 });
+    expect(neighborhood(model, "f", 2)).toMatchObject({ isolatedCount: 1, links: [] });
+  });
+
+  it("returns an empty model for an unknown centre and just the centre at depth 0", () => {
+    expect(neighborhood(model, "zzz", 1).nodes).toEqual([]);
+    expect(ids(neighborhood(model, "a", 0))).toEqual(["a"]);
+  });
+});
+
+describe("linkIds", () => {
+  it("returns ids whether force-graph has swapped them for node objects or not", () => {
+    expect(linkIds({ source: "a", target: "b" })).toEqual({ source: "a", target: "b" });
+    const swapped = { source: { id: "a", x: 1 }, target: { id: "b", x: 2 } } as unknown as { source: string; target: string };
+    expect(linkIds(swapped)).toEqual({ source: "a", target: "b" });
+    expect(isLinkMatched(linkIds(swapped), new Set(["a", "b"]))).toBe(true);
+    expect(isLinkMatched(linkIds(swapped), new Set(["a"]))).toBe(false);
   });
 });

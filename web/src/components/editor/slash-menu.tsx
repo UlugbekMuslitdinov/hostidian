@@ -13,6 +13,7 @@ import {
 } from "@blocknote/react";
 import { Link2, Sparkles } from "lucide-react";
 import type { HEditor } from "./editor-types";
+import { groupContiguously } from "./slash-items";
 
 /**
  * The `/` slash menu: BlockNote's defaults plus our custom `callout` block and a shortcut that opens the
@@ -37,13 +38,13 @@ export function SlashMenu({ editor }: { editor: HEditor }) {
       {
         title: "Link to page",
         subtext: "Reference another page",
-        group: "Basic blocks",
+        group: "Advanced",
         aliases: ["link", "page", "wiki", "reference", "[["],
         icon: <Link2 className="size-[18px]" aria-hidden="true" />,
         onItemClick: () => suggestionMenu.openSuggestionMenu("[["),
       },
     ];
-    return filterSuggestionItems(items, query);
+    return groupContiguously(filterSuggestionItems(items, query));
   };
 
   return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;

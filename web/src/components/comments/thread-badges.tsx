@@ -78,7 +78,7 @@ export function ThreadBadges({ editor, wrapperRef }: { editor: HEditor; wrapperR
   const byId = new Map(slots.map(([blockId, views]) => [blockId, views]));
 
   return (
-    <div ref={containerRef} className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden="true">
+    <div ref={containerRef} className="pointer-events-none absolute inset-0 hidden md:block">
       {laid.map((slot) => {
         const views = byId.get(slot.blockId);
         if (!views) return null;

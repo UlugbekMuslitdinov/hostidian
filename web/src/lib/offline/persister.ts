@@ -18,6 +18,11 @@ import { createStore, type ExternalStore } from "./store";
 /** Bump when the shape of persisted data changes incompatibly (also part of the TanStack `buster`). */
 export const PERSIST_SCHEMA_VERSION = 1;
 export const PERSIST_KEY_PREFIX = `rq:v${PERSIST_SCHEMA_VERSION}:`;
+/**
+ * TanStack's `buster`: a snapshot written under a different value is discarded on restore. Deliberately tied to the
+ * schema version, not to the build: an app update must not throw away mutations that are still queued.
+ */
+export const PERSIST_BUSTER = `schema-${PERSIST_SCHEMA_VERSION}`;
 export const persistKey = (userId: string) => `${PERSIST_KEY_PREFIX}${userId}`;
 
 /** Offline data older than this is discarded on restore (and queries are kept in memory that long). */

@@ -3,9 +3,10 @@
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 import "@hostidian/editor-schema/styles.css";
+import "./editor.css";
 
 import { withCollaboration } from "@blocknote/core/yjs";
-import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
+import { FormattingToolbarController, SideMenuController, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { PageLinkContext, schema, type PageLinkContextValue } from "@hostidian/editor-schema/react";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +18,7 @@ import { collectBlockIds } from "@/components/comments/anchoring";
 import type { CommentsContextValue } from "@/components/comments/comments-context";
 import { useComments } from "@/components/comments/comments-context";
 import { ThreadBadges } from "@/components/comments/thread-badges";
-import { usePublishPresence } from "@/components/page/presence";
+import { usePublishConnection, usePublishPresence } from "@/components/page/presence";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageActions } from "@/hooks/use-page-actions";
 import { pagesOptions } from "@/lib/api/queries";
@@ -30,6 +31,8 @@ import { canEdit } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
 import { pageHref } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
+import { CommentFormattingToolbar } from "./comment-toolbar-button";
+import { ReadOnlyCommentOverlay } from "./comment-overlay";
 import { CommentSideMenu } from "./comment-side-menu";
 import { PageLinkMenu } from "./page-link-menu";
 import { SlashMenu } from "./slash-menu";
@@ -45,6 +48,7 @@ export function PageEditor({ pageId, role }: { pageId: string; role: EffectiveRo
   const { session, snapshot } = usePageCollab(pageId, { id: user.id, name: user.name, color: user.avatarColor });
   const peers = usePeers(session, user.id);
   usePublishPresence(peers);
+  usePublishConnection(snapshot.connection);
   const comments = useComments();
 
   const editable = canEdit(role) && snapshot.connection !== "no-access";
@@ -60,7 +64,6 @@ export function PageEditor({ pageId, role }: { pageId: string; role: EffectiveRo
       pageId={pageId}
       editable={editable}
       comments={comments}
-      connection={snapshot.connection}
       contentReady={snapshot.contentReady}
     />
   );
@@ -71,14 +74,12 @@ function CollabEditor({
   pageId,
   editable,
   comments,
-  connection,
   contentReady,
 }: {
   session: CollabSession;
   pageId: string;
   editable: boolean;
   comments: CommentsContextValue | null;
-  connection: ConnectionState;
   contentReady: boolean;
 }) {
   const { user } = useSession();
@@ -147,31 +148,21 @@ function CollabEditor({
           theme={resolvedTheme === "dark" ? "dark" : "light"}
           slashMenu={false}
           sideMenu={false}
+          formattingToolbar={false}
           onChange={publishBlocks}
           className="hostidian-editor"
         >
           <SlashMenu editor={editor} />
           <PageLinkMenu editor={editor} pages={pages} currentPageId={pageId} onCreate={onCreatePage} />
           <SideMenuController sideMenu={CommentSideMenu} />
+          <FormattingToolbarController formattingToolbar={CommentFormattingToolbar} />
         </BlockNoteView>
 
+        {!editable ? <ReadOnlyCommentOverlay editor={editor} wrapperRef={wrapperRef} /> : null}
+
         <ThreadBadges editor={editor} wrapperRef={wrapperRef} />
-        <ConnectionStatus connection={connection} />
       </div>
     </PageLinkContext.Provider>
-  );
-}
-
-function ConnectionStatus({ connection }: { connection: ConnectionState }) {
-  if (connection === "synced" || connection === "syncing" || connection === "connecting") return null;
-  return (
-    <p
-      role="status"
-      className="mt-3 text-xs text-muted-foreground"
-      data-connection={connection}
-    >
-      {CONNECTION_LABELS[connection]}
-    </p>
   );
 }
 

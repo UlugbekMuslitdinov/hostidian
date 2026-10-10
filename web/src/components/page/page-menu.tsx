@@ -4,6 +4,7 @@ import { Copy, CopyPlus, Download, FolderInput, Pencil, Star, StarOff, Trash2 } 
 import type { PageSummary } from "@hostidian/api-types";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useAppUI } from "@/components/layout/app-ui";
+import { useOnline } from "@/lib/offline/context";
 import type { PageActions } from "@/hooks/use-page-actions";
 import { canArchive, canEdit } from "@/lib/permissions";
 
@@ -24,7 +25,10 @@ export function PageMenuItems({
   onRename?: () => void;
 }) {
   const ui = useAppUI();
+  const online = useOnline();
   const editable = canEdit(page.role);
+  // Duplicating and exporting are server-side operations.
+  const needsConnection = online ? null : <span className="ml-auto text-xs text-muted-foreground">Needs connection</span>;
 
   return (
     <>
@@ -39,9 +43,10 @@ export function PageMenuItems({
         </DropdownMenuItem>
       ) : null}
       {editable ? (
-        <DropdownMenuItem onSelect={() => void actions.duplicate(page.id)}>
+        <DropdownMenuItem disabled={!online} onSelect={() => void actions.duplicate(page.id)}>
           <CopyPlus />
           Duplicate
+          {needsConnection}
         </DropdownMenuItem>
       ) : null}
       {editable ? (
@@ -54,9 +59,10 @@ export function PageMenuItems({
         <Copy />
         Copy link
       </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => void actions.exportPage(page.id, page.title)}>
+      <DropdownMenuItem disabled={!online} onSelect={() => void actions.exportPage(page.id, page.title)}>
         <Download />
         Export as Markdown
+        {needsConnection}
       </DropdownMenuItem>
       {canArchive(page.role) ? (
         <>

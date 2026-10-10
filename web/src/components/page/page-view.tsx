@@ -2,10 +2,14 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, FileQuestion, MessageSquare, Trash2, WifiOff } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { BacklinksPanel } from "@/components/backlinks/backlinks-panel";
+import { LocalGraphSection } from "@/components/backlinks/local-graph";
+import { useLinkRefresh } from "@/components/backlinks/use-link-refresh";
 import { EmptyState } from "@/components/common/empty-state";
 import { CommentsProvider } from "@/components/comments/comments-context";
 import { CommentsDock } from "@/components/comments/comments-dock";
+import { ConnectionIndicator } from "@/components/editor/connection-indicator";
 import { PageEditor } from "@/components/editor/page-editor";
 import { TopBar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
@@ -18,9 +22,9 @@ import { canComment, canEdit } from "@/lib/permissions";
 import { formatRelative, useNow } from "@/lib/time";
 import { AppLink } from "@/lib/nav";
 import { pageTitle, workspaceHref } from "@/lib/utils";
+import { rememberLastPage } from "@/components/graph/last-page";
 import { useWorkspace } from "@/lib/workspace";
 import type { PageDetail } from "@hostidian/api-types";
-import { BacklinksPanel } from "./backlinks-panel";
 import { PageHeader } from "./page-header";
 import { PageCover, PageTitleBlock } from "./page-title-block";
 import { PresenceProvider } from "./presence";
@@ -76,7 +80,12 @@ export function PageView({ pageId }: { pageId: string }) {
 function PageContent({ detail }: { detail: PageDetail }) {
   const actions = usePageActions();
   const now = useNow();
+  const { workspace } = useWorkspace();
   const { page } = detail;
+  useLinkRefresh(workspace.id);
+  useEffect(() => {
+    rememberLastPage(workspace.id, page.id);
+  }, [workspace.id, page.id]);
   const editable = canEdit(page.role) && !page.archivedAt;
 
   return (
@@ -90,7 +99,8 @@ function PageContent({ detail }: { detail: PageDetail }) {
           <div className="min-w-0 flex-1">
             <PageCover cover={page.cover} editable={editable} onChange={(cover) => actions.updateMeta(page.id, { cover })} />
 
-            <div className="mx-auto w-full max-w-[720px] px-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] md:px-8">
+            {/* The left gutter (4.5rem from md up) is where BlockNote's side menu hangs; the right one holds the comment badges. */}
+            <div className="mx-auto w-full max-w-[800px] px-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] md:pr-12 md:pl-[4.5rem]">
               {page.archivedAt ? (
                 <Banner icon={<Trash2 className="size-4" />} tone="warning">
                   This page is in the Trash.
@@ -119,13 +129,19 @@ function PageContent({ detail }: { detail: PageDetail }) {
                 onChangeCover={(cover) => actions.updateMeta(page.id, { cover })}
               />
 
-              <p className="mb-2 text-xs text-muted-foreground">
-                Last edited {formatRelative(page.updatedAt, now || Date.parse(page.updatedAt))}
-                {detail.lastEditedBy ? ` by ${detail.lastEditedBy.name}` : ""}
-              </p>
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <p className="min-w-0 truncate">
+                  Last edited {formatRelative(page.updatedAt, now || Date.parse(page.updatedAt))}
+                  {detail.lastEditedBy ? ` by ${detail.lastEditedBy.name}` : ""}
+                </p>
+                <ConnectionIndicator editable={editable} className="shrink-0" />
+              </div>
 
               <PageEditor pageId={page.id} role={page.role} />
-              <BacklinksPanel pageId={page.id} />
+              <div className="mt-10 grid gap-4 border-t pt-4">
+                <BacklinksPanel pageId={page.id} />
+                <LocalGraphSection pageId={page.id} />
+              </div>
             </div>
           </div>
 

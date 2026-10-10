@@ -35,7 +35,7 @@ export const NAVIGATION_NETWORK_TIMEOUT_S = 3;
 // ----------------------------------------------------------------------------------------------------------
 
 /**
- * All `/w/<slug>[/p/<id> | /trash]` routes render the same client app (see lib/nav.tsx). They are
+ * All `/w/<slug>[/p/<id> | /trash | /graph]` routes render the same client app (see lib/nav.tsx). They are
  * server-rendered on demand (dynamic segments), so the worker precaches one representative document per route
  * shape under placeholder segments and serves it for *any* workspace URL when the network is unavailable.
  * One document per shape (instead of a single one) keeps the router tree embedded in the HTML identical to the
@@ -45,6 +45,7 @@ export const SHELL_URLS = {
   home: "/w/_shell",
   page: "/w/_shell/p/_shell",
   trash: "/w/_shell/trash",
+  graph: "/w/_shell/graph",
 } as const;
 
 export const ROOT_URL = "/";
@@ -55,7 +56,7 @@ export const OFFLINE_URL = "/offline.html";
 export const PRECACHED_DOCUMENTS: readonly string[] = [ROOT_URL, ...Object.values(SHELL_URLS)];
 
 /** Same grammar as `parseRoute` in lib/nav.tsx (a test keeps the two in sync). */
-const WORKSPACE_RE = /^\/w\/([^/]+)(?:\/(?:p\/([^/]+)|(trash)))?\/?$/;
+const WORKSPACE_RE = /^\/w\/([^/]+)(?:\/(?:p\/([^/]+)|(trash)|(graph)))?\/?$/;
 
 export type ShellKind = keyof typeof SHELL_URLS;
 
@@ -64,6 +65,7 @@ export function shellKindForPath(pathname: string): ShellKind | null {
   if (!m) return null;
   if (m[2]) return "page";
   if (m[3]) return "trash";
+  if (m[4]) return "graph";
   return "home";
 }
 
@@ -142,11 +144,17 @@ export interface ResponseFacts {
 
 const CACHEABLE_FILE_TYPE_RE = /^(?:image|video|audio)\/|^application\/pdf\b/i;
 
-/** May this attachment response be stored for offline use? */
+/**
+ * May this attachment response be stored for offline use?
+ *
+ * `Cache-Control: no-store` is deliberately NOT a reason to refuse: the API sends it on every attachment so that
+ * browsers and proxies do not keep files around for other people. This cache is neither: it is private to the
+ * signed-in user's browser profile, prefixed `hostidian-user-` and wiped on logout and on account change
+ * (offline/cleanup.ts), and keeping images is the point of an offline notes app.
+ */
 export function isCacheableFileResponse(res: ResponseFacts, maxBytes = MAX_CACHED_FILE_BYTES): boolean {
   if (res.status !== 200 || res.type === "opaque" || res.type === "opaqueredirect") return false;
   if (res.headers.get("set-cookie")) return false;
-  if (/\bno-store\b/i.test(res.headers.get("cache-control") ?? "")) return false;
   if (res.headers.get("vary")?.trim() === "*") return false;
   if (!CACHEABLE_FILE_TYPE_RE.test(res.headers.get("content-type") ?? "")) return false;
   const length = Number(res.headers.get("content-length"));

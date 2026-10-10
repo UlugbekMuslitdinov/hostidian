@@ -10,6 +10,8 @@ export interface UserScope {
   get(): string | null;
   set(userId: string): void;
   clear(): void;
+  /** Forget the in-memory copy and re-read localStorage (another tab changed it). */
+  refresh(): void;
 }
 
 export function createUserScope(): UserScope {
@@ -29,6 +31,9 @@ export function createUserScope(): UserScope {
     clear() {
       memory = null;
       removeStorage(OFFLINE_KEYS.lastUser);
+    },
+    refresh() {
+      memory = undefined;
     },
   };
 }

@@ -435,7 +435,7 @@ function SidebarSection({
           type="button"
           onClick={() => onToggle(id)}
           aria-expanded={!collapsed}
-          className="flex min-h-9 flex-1 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent md:min-h-6"
+          className="flex min-h-11 flex-1 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent md:min-h-6"
         >
           <ChevronRight className={cn("size-3 transition-transform", !collapsed && "rotate-90")} />
           {icon}
@@ -446,7 +446,7 @@ function SidebarSection({
             type="button"
             onClick={onAdd}
             aria-label={addLabel}
-            className="grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground md:size-6 md:opacity-0 md:focus-visible:opacity-100 md:group-focus-within/section:opacity-100 md:group-hover/section:opacity-100"
+            className="grid size-11 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground md:size-6 md:opacity-0 md:focus-visible:opacity-100 md:group-focus-within/section:opacity-100 md:group-hover/section:opacity-100"
           >
             <Plus className="size-4" />
           </button>

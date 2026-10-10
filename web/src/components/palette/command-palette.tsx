@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FilePlus2, Home, Moon, PanelLeft, Search, Settings, Sun, Trash2 } from "lucide-react";
+import { FilePlus2, Home, Moon, PanelLeft, Search, Settings, Sun, Trash2, WifiOff } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, useState, type ReactNode } from "react";
 import { PageIcon } from "@/components/common/page-icon";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { usePageActions } from "@/hooks/use-page-actions";
+import { useOnline } from "@/lib/offline/context";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { pagesOptions, recentOptions, searchOptions } from "@/lib/api/queries";
 import { useAppNavigate } from "@/lib/nav";
@@ -67,10 +68,12 @@ function PaletteBody({ close }: { close: () => void }) {
   const q = useDebouncedValue(typed, 200);
   const settled = q === typed;
 
+  // Offline there is no server to search: ⌘K falls back to filtering the cached page tree by title (below).
+  const online = useOnline();
   const pagesQuery = useQuery(pagesOptions(workspace.id));
   const recentQuery = useQuery(recentOptions(workspace.id, 8));
-  const titleSearch = useQuery({ ...searchOptions(workspace.id, "title", q), enabled: q.length > 0 });
-  const fullSearch = useQuery({ ...searchOptions(workspace.id, "full", q, 6), enabled: q.length > 1 });
+  const titleSearch = useQuery({ ...searchOptions(workspace.id, "title", q), enabled: online && q.length > 0 });
+  const fullSearch = useQuery({ ...searchOptions(workspace.id, "full", q, 6), enabled: online && q.length > 1 });
 
   const go = (href: string) => {
     close();
@@ -150,7 +153,7 @@ function PaletteBody({ close }: { close: () => void }) {
   const filteredCommands = typed
     ? commands.filter((c) => c.label.toLowerCase().includes(typed.toLowerCase()))
     : commands;
-  const searching = typed.length > 0 && (!settled || titleSearch.isFetching || fullSearch.isFetching);
+  const searching = online && typed.length > 0 && (!settled || titleSearch.isFetching || fullSearch.isFetching);
 
   const pageItem = (p: PageSummary, extra?: ReactNode) => (
     <CommandItem key={`page-${p.id}`} value={`page-${p.id}`} onSelect={() => go(pageHref(workspace.slug, p.id))}>
@@ -221,6 +224,16 @@ function PaletteBody({ close }: { close: () => void }) {
           </CommandEmpty>
         )}
       </CommandList>
+      {!online ? (
+        <p
+          role="status"
+          data-testid="palette-offline-note"
+          className="flex items-center gap-2 border-t bg-muted/50 px-3.5 py-2 text-xs text-muted-foreground"
+        >
+          <WifiOff className="size-3.5 shrink-0" aria-hidden="true" />
+          Offline: searching page titles in your cached workspace. Searching inside pages needs a connection.
+        </p>
+      ) : null}
       <div className="hidden items-center gap-4 border-t px-3.5 py-2 text-xs text-muted-foreground md:flex">
         <span>↑↓ to navigate</span>
         <span>↵ to open</span>

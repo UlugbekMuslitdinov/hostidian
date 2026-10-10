@@ -35,7 +35,7 @@ export function CommentSideMenu(props: SideMenuProps) {
       {target && Components ? (
         <Components.SideMenu.Button
           className="bn-button"
-          label="Comment"
+          label="Add comment"
           onClick={(event) => {
             event.preventDefault();
             const quote = quoteFor(editor.getSelectedText(), blockText(target.block));

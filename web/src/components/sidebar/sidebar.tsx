@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Home, Network, PanelLeftClose, Search, Settings, Trash2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useAppUI } from "@/components/layout/app-ui";
+import { ConnectionStatus } from "@/components/pwa/connection-status";
+import { InstallCard } from "@/components/pwa/install-card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,12 +78,14 @@ export function Sidebar({ inDrawer = false }: { inDrawer?: boolean }) {
       </ScrollArea>
 
       <div className="flex flex-col gap-px border-t border-sidebar-border px-2 py-2">
+        <InstallCard />
         <SidebarLink href={trash} icon={<Trash2 />} active={pathname === trash}>
           Trash
         </SidebarLink>
         <SidebarLink href="/settings" icon={<Settings />} active={pathname.startsWith("/settings")}>
           Settings
         </SidebarLink>
+        <ConnectionStatus />
       </div>
     </div>
   );

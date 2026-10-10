@@ -44,7 +44,8 @@ export function PageLinkMenu({ editor, pages, currentPageId, onCreate }: PageLin
     if (shouldOfferCreate(pagesArray, query)) {
       const title = cleanNewPageTitle(query);
       if (title) {
-        items.unshift({
+        // Last, so that Enter on `[[Tar` links the existing "Target" instead of silently creating a page named "Tar".
+        items.push({
           title: `Create “${title}”`,
           subtext: "New page",
           group: "Create",

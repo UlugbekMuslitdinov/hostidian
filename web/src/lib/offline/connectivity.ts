@@ -13,6 +13,7 @@ export interface ConnectivityEnv {
   probe: (signal: AbortSignal) => Promise<boolean>;
   setTimeout: (fn: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
+  now: () => number;
 }
 
 export interface ConnectivityOptions {
@@ -31,10 +32,14 @@ export interface ConnectivityMonitor {
   reportFailure(): void;
   /** An API call got an HTTP response. */
   reportSuccess(): void;
+  /** Probe the server now (the "Retry" button), instead of waiting out the back-off. */
+  checkNow(): void;
   readonly online: boolean;
 }
 
 export const DEFAULT_PROBE_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000] as const;
+/** Coming back to a tab re-checks the server, but not more often than this while it looks reachable. */
+export const VISIBLE_REPROBE_MS = 30_000;
 const PROBE_TIMEOUT_MS = 5_000;
 
 export function browserEnv(): ConnectivityEnv {
@@ -68,6 +73,7 @@ export function browserEnv(): ConnectivityEnv {
     },
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    now: () => Date.now(),
   };
 }
 
@@ -83,6 +89,7 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
   let probeTimer: unknown = null;
   let probeAbort: AbortController | null = null;
   let attempt = 0;
+  let lastProbeAt = -Infinity;
 
   const apply = () => {
     const next = browserOnline && reachable;
@@ -98,18 +105,23 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
     probeAbort = null;
   };
 
+  /**
+   * Ask the server. Works in both directions: a failed answer while we believed we were online flips us offline
+   * (the browser's `navigator.onLine` is true behind a dead Wi-Fi), a good answer while offline flips us back.
+   */
   const probeNow = async () => {
     cancelProbe();
-    if (!started || reachable || !browserOnline) return;
+    if (!started || !browserOnline) return;
     const abort = new AbortController();
     probeAbort = abort;
+    lastProbeAt = env.now();
     const ok = await env.probe(abort.signal);
     if (abort.signal.aborted || !started) return;
     probeAbort = null;
     if (ok) {
       markReachable();
     } else {
-      scheduleProbe();
+      markUnreachable();
     }
   };
 
@@ -121,6 +133,15 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
       probeTimer = null;
       void probeNow();
     }, delay);
+  };
+
+  const markUnreachable = () => {
+    if (reachable) {
+      reachable = false;
+      attempt = 0;
+      apply();
+    }
+    scheduleProbe();
   };
 
   const markReachable = () => {
@@ -141,10 +162,14 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
       options.onChange(effective);
       unlisten = env.listen({
         online: () => {
+          const wasOffline = !effective;
           browserOnline = true;
+          // The interface is up again, which proves little (captive portal, router without uplink): stay offline
+          // until the server actually answers. If we were not offline, just double-check quietly.
+          if (wasOffline) reachable = false;
+          attempt = 0;
           apply();
-          // Coming back from an outage we already know about: check right away instead of waiting out the backoff.
-          if (!reachable) void probeNow();
+          void probeNow();
         },
         offline: () => {
           browserOnline = false;
@@ -152,9 +177,11 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
           apply();
         },
         visible: () => {
-          if (!reachable) void probeNow();
+          if (!reachable || env.now() - lastProbeAt >= VISIBLE_REPROBE_MS) void probeNow();
         },
       });
+      // A cold start from the offline cache says "online" on the browser's word alone; confirm it.
+      if (browserOnline) void probeNow();
     },
     stop() {
       started = false;
@@ -171,6 +198,9 @@ export function createConnectivityMonitor(options: ConnectivityOptions): Connect
     },
     reportSuccess() {
       if (started) markReachable();
+    },
+    checkNow() {
+      if (started) void probeNow();
     },
     get online() {
       return effective;

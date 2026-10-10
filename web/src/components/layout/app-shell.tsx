@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
 import { CommandPalette } from "@/components/palette/command-palette";
 import { MovePageDialog } from "@/components/page/move-page-dialog";
+import { LaunchActions } from "@/components/pwa/launch-actions";
+import { OfflineBanner, useBannerState } from "@/components/pwa/offline-banner";
+import { OfflineSync } from "@/components/pwa/offline-sync";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useIsDesktop } from "@/hooks/use-media-query";
@@ -43,6 +46,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         {value ? (
           <>
             <LiveUpdates workspaceId={value.workspace.id} />
+            <OfflineSync />
+            <LaunchActions />
             <CommandPalette />
             <MovePageDialog />
           </>
@@ -60,6 +65,9 @@ function LiveUpdates({ workspaceId }: { workspaceId: string }) {
 function ShellFrame({ hasWorkspace, children }: { hasWorkspace: boolean; children: ReactNode }) {
   const ui = useAppUI();
   const isDesktop = useIsDesktop();
+  const banner = useBannerState();
+  // Phones always show the banner; on desktop the sidebar's connection indicator covers it unless it is collapsed.
+  const bannerVisible = banner !== null && (!isDesktop || !ui.sidebarOpen);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -96,13 +104,20 @@ function ShellFrame({ hasWorkspace, children }: { hasWorkspace: boolean; childre
         </Sheet>
       )}
 
-      <main
-        id="main"
-        tabIndex={-1}
-        className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain outline-none"
+      <div
+        className="flex min-w-0 flex-1 flex-col"
+        // The banner takes the notch inset; page headers below it must not add it again (`.pt-safe`).
+        style={bannerVisible ? ({ "--safe-top": "0px" } as CSSProperties) : undefined}
       >
-        {children}
-      </main>
+        {bannerVisible && banner ? <OfflineBanner banner={banner} /> : null}
+        <main
+          id="main"
+          tabIndex={-1}
+          className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain outline-none"
+        >
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

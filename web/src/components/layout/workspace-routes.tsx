@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { GraphView } from "@/components/graph/graph-view";
 import { PageView } from "@/components/page/page-view";
 import { TrashView } from "@/components/page/trash-view";
@@ -30,7 +30,12 @@ export function WorkspaceRoutes() {
     case "trash":
       return <TrashView />;
     case "graph":
-      return <GraphView />;
+      // GraphView reads `?focus=` (useSearchParams), which needs a Suspense boundary in a statically rendered route.
+      return (
+        <Suspense fallback={null}>
+          <GraphView />
+        </Suspense>
+      );
     default:
       return <WorkspaceHome />;
   }

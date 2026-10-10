@@ -72,6 +72,12 @@ export interface UseImportJobResult {
  * Drives the workspace import: multipart upload with progress, then polling of
  * `GET /import-jobs/{jobId}` until `done`/`failed`. Polling stops on unmount or `reset`.
  */
+/** The API records a failed job's error as `<code>: <message>` (e.g. `bad_request: The uploaded file…`); show the message. */
+export function describeJobError(error: string | null | undefined): string {
+  const message = error?.replace(/^[a-z][a-z_]*:\s+/, "").trim();
+  return message || "The import failed.";
+}
+
 export function useImportJob(workspaceId: string, options: UseImportJobOptions = {}): UseImportJobResult {
   const { upload = uploadMultipart, pollIntervalMs = IMPORT_POLL_INTERVAL_MS } = options;
   const qc = useQueryClient();
@@ -174,7 +180,7 @@ export function useImportJob(workspaceId: string, options: UseImportJobOptions =
               description: warnings > 0 ? `${warnings} warning${warnings === 1 ? "" : "s"}` : undefined,
             });
           } else {
-            const message = job.error ?? "The import failed.";
+            const message = describeJobError(job.error);
             setState({ phase: "failed", uploadFraction: 1, job, error: message });
             toast.error("Import failed", { description: message });
           }
