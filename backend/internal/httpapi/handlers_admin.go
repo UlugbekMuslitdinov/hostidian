@@ -3,6 +3,8 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"hostidian/backend/internal/auth"
 	"hostidian/backend/internal/httpapi/gen"
 )
@@ -87,4 +89,36 @@ func (s *Server) AdminUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// AdminCreateUser: POST /admin/users
+func (s *Server) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	body, err := decodeJSON[struct {
+		Name            string  `json:"name"`
+		Email           string  `json:"email"`
+		Password        *string `json:"password"`
+		IsInstanceAdmin bool    `json:"isInstanceAdmin"`
+		Memberships     []struct {
+			WorkspaceID uuid.UUID `json:"workspaceId"`
+			Role        string    `json:"role"`
+		} `json:"memberships"`
+	}](w, r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	in := auth.AdminCreateUserInput{Name: body.Name, Email: body.Email, Password: body.Password, IsInstanceAdmin: body.IsInstanceAdmin}
+	for _, m := range body.Memberships {
+		in.Memberships = append(in.Memberships, auth.AdminMembership{WorkspaceID: m.WorkspaceID, Role: m.Role})
+	}
+	out, err := s.Auth.AdminCreateUser(r.Context(), p, in)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
 }

@@ -328,6 +328,82 @@ func (s *Service) UpdateMember(ctx context.Context, actorID, workspaceID, target
 	return memberToGen(member), nil
 }
 
+// AddMemberInput identifies the account to add (by id or by email) and the role to give it.
+type AddMemberInput struct {
+	UserID *uuid.UUID
+	Email  *string
+	Role   string
+}
+
+// AddMember adds an existing account to the workspace. Owners/admins only, and only owners may add
+// admins. An unknown (or disabled) account is a 404 so the UI can offer an invite link instead; an
+// account that is already a member is a 409 and keeps its current role.
+func (s *Service) AddMember(ctx context.Context, actorID, workspaceID uuid.UUID, in AddMemberInput) (gen.Member, error) {
+	role := perm.WorkspaceRole(in.Role)
+	switch role {
+	case perm.Admin, perm.Member, perm.Guest:
+	default:
+		return gen.Member{}, apperr.FieldError("role", "Role must be admin, member or guest.")
+	}
+	hasEmail := in.Email != nil && strings.TrimSpace(*in.Email) != ""
+	if (in.UserID == nil) == !hasEmail {
+		return gen.Member{}, apperr.FieldError("email", "Give either a user id or an email address.")
+	}
+	var email string
+	if hasEmail {
+		var err error
+		if email, err = validate.Email("email", *in.Email); err != nil {
+			return gen.Member{}, err
+		}
+	}
+	member, err := db.WithTx(ctx, s.pool, func(q *sqlcgen.Queries) (sqlcgen.GetWorkspaceMemberRow, error) {
+		actorRole, err := perm.RequireWorkspaceAdmin(ctx, q, workspaceID, actorID)
+		if err != nil {
+			return sqlcgen.GetWorkspaceMemberRow{}, err
+		}
+		if role == perm.Admin && actorRole != perm.Owner {
+			return sqlcgen.GetWorkspaceMemberRow{}, apperr.Forbidden("Only workspace owners can add admins.")
+		}
+		var target sqlcgen.User
+		if in.UserID != nil {
+			target, err = q.GetUserByID(ctx, *in.UserID)
+		} else {
+			target, err = q.GetUserByEmail(ctx, email)
+		}
+		if err != nil {
+			if db.IsNotFound(err) {
+				return sqlcgen.GetWorkspaceMemberRow{}, apperr.NotFound("No account with that email address.")
+			}
+			return sqlcgen.GetWorkspaceMemberRow{}, fmt.Errorf("find account: %w", err)
+		}
+		if target.DisabledAt != nil {
+			return sqlcgen.GetWorkspaceMemberRow{}, apperr.NotFound("No account with that email address.")
+		}
+		added, err := q.AddWorkspaceMemberIfMissing(ctx, sqlcgen.AddWorkspaceMemberIfMissingParams{
+			WorkspaceID: workspaceID, UserID: target.ID, Role: string(role),
+		})
+		if err != nil {
+			return sqlcgen.GetWorkspaceMemberRow{}, fmt.Errorf("add member: %w", err)
+		}
+		if added == 0 {
+			return sqlcgen.GetWorkspaceMemberRow{}, apperr.Conflict("They are already a member of this workspace.")
+		}
+		row, err := q.GetWorkspaceMember(ctx, sqlcgen.GetWorkspaceMemberParams{WorkspaceID: workspaceID, UserID: target.ID})
+		if err != nil {
+			return sqlcgen.GetWorkspaceMemberRow{}, fmt.Errorf("load member: %w", err)
+		}
+		return row, nil
+	})
+	if err != nil {
+		return gen.Member{}, err
+	}
+	s.broker.Publish(events.Event{
+		Type: events.MemberChanged, WorkspaceID: workspaceID, ActorID: actorID,
+		Data: map[string]any{"userId": member.UserID, "role": string(role), "removed": false},
+	})
+	return memberToGen(member), nil
+}
+
 // RemoveMember removes a member, or lets a member leave (targetID == actorID).
 func (s *Service) RemoveMember(ctx context.Context, actorID, workspaceID, targetID uuid.UUID) error {
 	err := db.InTx(ctx, s.pool, func(q *sqlcgen.Queries) error {

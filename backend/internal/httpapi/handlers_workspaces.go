@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"hostidian/backend/internal/httpapi/gen"
@@ -193,4 +194,29 @@ func (s *Server) RevokeInvite(w http.ResponseWriter, r *http.Request, workspaceI
 		return
 	}
 	noContent(w)
+}
+
+// AddMember: POST /workspaces/{workspaceId}/members
+func (s *Server) AddMember(w http.ResponseWriter, r *http.Request, workspaceId gen.WorkspaceId) {
+	p, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	body, err := decodeJSON[struct {
+		UserID *uuid.UUID `json:"userId"`
+		Email  *string    `json:"email"`
+		Role   string     `json:"role"`
+	}](w, r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	m, err := s.Workspaces.AddMember(r.Context(), p.User.ID, workspaceId, workspaces.AddMemberInput{
+		UserID: body.UserID, Email: body.Email, Role: body.Role,
+	})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, m)
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,7 +12,9 @@ import (
 	"hostidian/backend/internal/collabclient"
 	"hostidian/backend/internal/db"
 	"hostidian/backend/internal/db/sqlcgen"
+	"hostidian/backend/internal/events"
 	"hostidian/backend/internal/httpapi/gen"
+	"hostidian/backend/internal/perm"
 	"hostidian/backend/internal/tokens"
 	"hostidian/backend/internal/validate"
 )
@@ -203,4 +206,132 @@ func (s *Service) UpdateSettings(ctx context.Context, p *Principal, in SettingsI
 		return gen.InstanceSettings{}, fmt.Errorf("update settings: %w", err)
 	}
 	return settingsToGen(st), nil
+}
+
+// NewAccountLinkTTL is the validity of the set-password link of an account created without a password.
+const NewAccountLinkTTL = 7 * 24 * time.Hour
+
+// AdminMembership places a new account into a workspace.
+type AdminMembership struct {
+	WorkspaceID uuid.UUID
+	Role        string
+}
+
+// AdminCreateUserInput is the body of POST /admin/users.
+type AdminCreateUserInput struct {
+	Name            string
+	Email           string
+	Password        *string
+	IsInstanceAdmin bool
+	Memberships     []AdminMembership
+}
+
+// AdminCreateUser creates an account on behalf of an instance admin. With a password the account can
+// sign in right away; without one the response carries a single-use set-password link. Memberships may
+// only target workspaces in which the caller is owner/admin (and only owners may grant admin), so this
+// cannot be used to reach into a workspace the admin has no standing in.
+func (s *Service) AdminCreateUser(ctx context.Context, p *Principal, in AdminCreateUserInput) (gen.AdminCreatedUser, error) {
+	if err := RequireInstanceAdmin(p); err != nil {
+		return gen.AdminCreatedUser{}, err
+	}
+	name, err := validate.Name("name", in.Name)
+	if err != nil {
+		return gen.AdminCreatedUser{}, err
+	}
+	email, err := validate.Email("email", in.Email)
+	if err != nil {
+		return gen.AdminCreatedUser{}, err
+	}
+	var hash *string
+	if in.Password != nil && strings.TrimSpace(*in.Password) != "" {
+		if err := validate.Password("password", *in.Password); err != nil {
+			return gen.AdminCreatedUser{}, err
+		}
+		h, err := s.hasher.Hash(*in.Password)
+		if err != nil {
+			return gen.AdminCreatedUser{}, fmt.Errorf("hash password: %w", err)
+		}
+		hash = &h
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, m := range in.Memberships {
+		switch perm.WorkspaceRole(m.Role) {
+		case perm.Admin, perm.Member, perm.Guest:
+		default:
+			return gen.AdminCreatedUser{}, apperr.FieldError("memberships", "Role must be admin, member or guest.")
+		}
+		if seen[m.WorkspaceID] {
+			return gen.AdminCreatedUser{}, apperr.FieldError("memberships", "A workspace can only be listed once.")
+		}
+		seen[m.WorkspaceID] = true
+	}
+
+	type result struct {
+		userID  uuid.UUID
+		link    string
+		expires time.Time
+	}
+	res, err := db.WithTx(ctx, s.pool, func(q *sqlcgen.Queries) (result, error) {
+		for _, m := range in.Memberships {
+			actorRole, err := perm.RequireWorkspaceAdmin(ctx, q, m.WorkspaceID, p.User.ID)
+			if err != nil {
+				return result{}, err
+			}
+			if perm.WorkspaceRole(m.Role) == perm.Admin && actorRole != perm.Owner {
+				return result{}, apperr.Forbidden("Only workspace owners can add admins.")
+			}
+		}
+		user, err := q.CreateUser(ctx, sqlcgen.CreateUserParams{
+			Email: email, Name: name, PasswordHash: hash, AvatarColor: randomAvatarColor(),
+			IsInstanceAdmin: in.IsInstanceAdmin,
+		})
+		if err != nil {
+			if db.IsUniqueViolation(err) {
+				return result{}, apperr.Conflict("An account with this email already exists.")
+			}
+			return result{}, fmt.Errorf("create user: %w", err)
+		}
+		for _, m := range in.Memberships {
+			if err := q.AddWorkspaceMember(ctx, sqlcgen.AddWorkspaceMemberParams{
+				WorkspaceID: m.WorkspaceID, UserID: user.ID, Role: m.Role,
+			}); err != nil {
+				return result{}, fmt.Errorf("add membership: %w", err)
+			}
+		}
+		out := result{userID: user.ID}
+		if hash == nil {
+			token, err := tokens.New()
+			if err != nil {
+				return result{}, err
+			}
+			out.expires = s.now().Add(NewAccountLinkTTL)
+			if err := q.CreatePasswordReset(ctx, sqlcgen.CreatePasswordResetParams{
+				TokenHash: tokens.Hash(token), UserID: user.ID, CreatedBy: &p.User.ID, ExpiresAt: out.expires,
+			}); err != nil {
+				return result{}, fmt.Errorf("create set-password link: %w", err)
+			}
+			out.link = s.cfg.PublicURL + "/reset-password/" + token
+		}
+		return out, nil
+	})
+	if err != nil {
+		return gen.AdminCreatedUser{}, err
+	}
+	for _, m := range in.Memberships {
+		s.broker.Publish(events.Event{
+			Type: events.MemberChanged, WorkspaceID: m.WorkspaceID, ActorID: p.User.ID,
+			Data: map[string]any{"userId": res.userID, "role": m.Role, "removed": false},
+		})
+	}
+	users, err := s.adminUsers(ctx, res.userID)
+	if err != nil || len(users) != 1 {
+		return gen.AdminCreatedUser{}, fmt.Errorf("load created user: %w", err)
+	}
+	out := gen.AdminCreatedUser{User: users[0]}
+	if res.link != "" {
+		out.SetPasswordUrl = &res.link
+		exp := res.expires.UTC()
+		out.SetPasswordExpiresAt = &exp
+	}
+	return out, nil
 }
