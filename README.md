@@ -2,7 +2,7 @@
 
 Self-hosted, multi-user, real-time collaborative notes — a Notion-style editor with Obsidian-style `[[links]]`, backlinks and graph, installable on your phone as an offline-capable PWA.
 
-<p alighn="center">
+<p align="center">
   <img src="https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.39%E2%80%AFPM.png" width="33%" />
   <img src="https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.20%E2%80%AFPM.png" width="33%" />
   <img src="https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.03%E2%80%AFPM.png" width="33%" />
@@ -15,6 +15,12 @@ Self-hosted, multi-user, real-time collaborative notes — a Notion-style editor
 - **Open source:** AGPL-3.0.
 
 > Status: under construction. See [`docs/plan.md`](docs/plan.md) for the roadmap and [`docs/architecture.md`](docs/architecture.md) for how it fits together.
+
+## Try it
+You can try it out here as a demo mode:
+- URL: <https://hostidian-demo.umuslitdinov.dev/>
+- Login: `demo@hostidian.com`
+- Password: `hostidiandemo`
 
 ## Quick start
 
