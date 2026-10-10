@@ -116,6 +116,43 @@ paths:
           description: The document was stored but pushing the extracted content to the API failed after ~3 quick retries (caller should retry the whole call; it is idempotent)
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
 
+  /internal/apply-markdown:
+    post:
+      tags: [collab-internal]
+      operationId: applyMarkdown
+      summary: api → collab. Edit a page's document through the live in-memory Y.Doc (used by MCP/agents).
+      description: |
+        Unlike `import-markdown` (which replaces the stored document and is only safe for pages nobody has open),
+        this opens a direct connection to the document, so the change is a normal Yjs transaction that connected
+        editors receive immediately and that merges with their concurrent edits. `replace` swaps the page body
+        (in-place block diff), `append`/`prepend` add the converted blocks at the end/start. After the store, the
+        extracted content is pushed to the api like any other edit, with `editorId` as the editor.
+        Markdown uses the stored dialect (conventions §8). Returns the resulting plain Markdown of the page.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pageId, markdown, mode, editorId]
+              properties:
+                pageId: { type: string, format: uuid }
+                markdown: { type: string, maxLength: 1000000 }
+                mode: { type: string, enum: [replace, append, prepend] }
+                editorId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [markdown]
+                properties:
+                  markdown: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
   /internal/health:
     get:
       tags: [api-internal, collab-internal]

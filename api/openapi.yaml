@@ -20,6 +20,7 @@ tags:
   - name: public
   - name: transfer
   - name: events
+  - name: tokens
 
 security:
   - cookieAuth: []
@@ -284,6 +285,63 @@ paths:
         '204': { description: Revoked }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ------------------------------------------------------------------ API access tokens (for MCP / agents)
+  /auth/tokens:
+    get:
+      tags: [tokens]
+      operationId: listApiTokens
+      summary: The caller's own access tokens (never includes the secret). Session-authenticated only.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiToken' }
+    post:
+      tags: [tokens]
+      operationId: createApiToken
+      summary: |
+        Create an access token for MCP clients / agents acting as the caller. The secret is returned ONCE.
+        Session-authenticated only (a token can never create tokens).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scope]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                scope: { $ref: '#/components/schemas/TokenScope' }
+                workspaceId:
+                  type: string
+                  format: uuid
+                  description: Restrict the token to one workspace the caller belongs to (omit = all the caller's workspaces)
+                expiresInDays: { type: integer, minimum: 1, maximum: 365, description: Omit for a token that never expires }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedApiToken' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /auth/tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [tokens]
+      operationId: revokeApiToken
+      responses:
+        '204': { description: Revoked (takes effect immediately) }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ------------------------------------------------------------------ admin (instance admins only)
   /admin/users:
     get:
@@ -298,6 +356,43 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/AdminUser' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      operationId: adminCreateUser
+      summary: |
+        Instance admins create an account directly. Give a `password`, or omit it to get a one-time
+        set-password link (valid 7 days) to hand to the person. Optional `memberships` add the user to workspaces
+        in which the caller is owner/admin (no other workspace can be targeted).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 200 }
+                isInstanceAdmin: { type: boolean, default: false }
+                memberships:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [workspaceId, role]
+                    properties:
+                      workspaceId: { type: string, format: uuid }
+                      role: { $ref: '#/components/schemas/InviteRole' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCreatedUser' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /admin/users/{userId}:
     parameters:
@@ -473,6 +568,32 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Member' }
+    post:
+      tags: [workspaces]
+      operationId: addMember
+      summary: |
+        Add an existing account to the workspace (owner/admin only; only owners may add admins). Identify the
+        user by `userId` or `email`. Unknown email → 404 (the UI then offers an invite link). Already a member → 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                userId: { type: string, format: uuid }
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/InviteRole' }
+      responses:
+        '201':
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /workspaces/{workspaceId}/members/{userId}:
     parameters:
@@ -1561,6 +1682,40 @@ components:
         email: { type: string, nullable: true }
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+
+    TokenScope:
+      type: string
+      description: "`read` = read-only tools; `write` = may also create/edit/move/archive/comment"
+      enum: [read, write]
+
+    ApiToken:
+      type: object
+      required: [id, name, prefix, scope, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, description: 'First characters of the token, for recognising it in lists (e.g. "hst_ab12cd")' }
+        scope: { $ref: '#/components/schemas/TokenScope' }
+        workspaceId: { type: string, format: uuid, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CreatedApiToken:
+      type: object
+      required: [token, apiToken, mcpUrl]
+      properties:
+        token: { type: string, description: 'The secret (`hst_…`). Shown only in this response.' }
+        apiToken: { $ref: '#/components/schemas/ApiToken' }
+        mcpUrl: { type: string, description: 'Absolute MCP endpoint: <PUBLIC_URL>/api/mcp' }
+
+    AdminCreatedUser:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: '#/components/schemas/AdminUser' }
+        setPasswordUrl: { type: string, description: 'Present when no password was given: one-time link (<PUBLIC_URL>/reset-password/<token>)' }
+        setPasswordExpiresAt: { type: string, format: date-time }
 
     InviteInfo:
       type: object

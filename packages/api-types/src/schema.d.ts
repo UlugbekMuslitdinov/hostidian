@@ -239,6 +239,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own access tokens (never includes the secret). Session-authenticated only. */
+        get: operations["listApiTokens"];
+        put?: never;
+        /**
+         * Create an access token for MCP clients / agents acting as the caller. The secret is returned ONCE.
+         *     Session-authenticated only (a token can never create tokens).
+         */
+        post: operations["createApiToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users": {
         parameters: {
             query?: never;
@@ -248,7 +287,12 @@ export interface paths {
         };
         get: operations["adminListUsers"];
         put?: never;
-        post?: never;
+        /**
+         * Instance admins create an account directly. Give a `password`, or omit it to get a one-time
+         *     set-password link (valid 7 days) to hand to the person. Optional `memberships` add the user to workspaces
+         *     in which the caller is owner/admin (no other workspace can be targeted).
+         */
+        post: operations["adminCreateUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -357,7 +401,11 @@ export interface paths {
         };
         get: operations["listMembers"];
         put?: never;
-        post?: never;
+        /**
+         * Add an existing account to the workspace (owner/admin only; only owners may add admins). Identify the
+         *     user by `userId` or `email`. Unknown email → 404 (the UI then offers an invite link). Already a member → 409.
+         */
+        post: operations["addMember"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1227,6 +1275,41 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /**
+         * @description `read` = read-only tools; `write` = may also create/edit/move/archive/comment
+         * @enum {string}
+         */
+        TokenScope: "read" | "write";
+        ApiToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description First characters of the token, for recognising it in lists (e.g. "hst_ab12cd") */
+            prefix: string;
+            scope: components["schemas"]["TokenScope"];
+            /** Format: uuid */
+            workspaceId?: string | null;
+            /** Format: date-time */
+            expiresAt?: string | null;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreatedApiToken: {
+            /** @description The secret (`hst_…`). Shown only in this response. */
+            token: string;
+            apiToken: components["schemas"]["ApiToken"];
+            /** @description Absolute MCP endpoint: <PUBLIC_URL>/api/mcp */
+            mcpUrl: string;
+        };
+        AdminCreatedUser: {
+            user: components["schemas"]["AdminUser"];
+            /** @description Present when no password was given: one-time link (<PUBLIC_URL>/reset-password/<token>) */
+            setPasswordUrl?: string;
+            /** Format: date-time */
+            setPasswordExpiresAt?: string;
+        };
         InviteInfo: {
             workspaceName: string;
             role: components["schemas"]["InviteRole"];
@@ -1858,6 +1941,83 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listApiTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiToken"][];
+                };
+            };
+        };
+    };
+    createApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    scope: components["schemas"]["TokenScope"];
+                    /**
+                     * Format: uuid
+                     * @description Restrict the token to one workspace the caller belongs to (omit = all the caller's workspaces)
+                     */
+                    workspaceId?: string;
+                    /** @description Omit for a token that never expires */
+                    expiresInDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedApiToken"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Validation"];
+        };
+    };
+    revokeApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked (takes effect immediately) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     adminListUsers: {
         parameters: {
             query?: never;
@@ -1877,6 +2037,45 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    adminCreateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** Format: email */
+                    email: string;
+                    password?: string;
+                    /** @default false */
+                    isInstanceAdmin?: boolean;
+                    memberships?: {
+                        /** Format: uuid */
+                        workspaceId: string;
+                        role: components["schemas"]["InviteRole"];
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCreatedUser"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Validation"];
         };
     };
     adminUpdateUser: {
@@ -2138,6 +2337,41 @@ export interface operations {
                     "application/json": components["schemas"]["Member"][];
                 };
             };
+        };
+    };
+    addMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    userId?: string;
+                    /** Format: email */
+                    email?: string;
+                    role: components["schemas"]["InviteRole"];
+                };
+            };
+        };
+        responses: {
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     removeMember: {

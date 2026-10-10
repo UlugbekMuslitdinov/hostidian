@@ -64,6 +64,7 @@ services:
       DATA_DIR: ${DATA_DIR:-/data}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
       MAX_IMPORT_MB: ${MAX_IMPORT_MB:-500}
+      MCP_ENABLED: ${MCP_ENABLED:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
