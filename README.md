@@ -2,6 +2,10 @@
 
 Self-hosted, multi-user, real-time collaborative notes — a Notion-style editor with Obsidian-style `[[links]]`, backlinks and graph, installable on your phone as an offline-capable PWA.
 
+![dashboard](https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.39%E2%80%AFPM.png)
+![graph](https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.20%E2%80%AFPM.png)
+![editor](https://media.umuslitdinov.dev/hostidian/Screenshot%202026-10-10%20at%208.10.03%E2%80%AFPM.png)
+
 - **Automatic sync** between all your devices (the server is the source of truth; edits merge via Yjs CRDTs, even offline).
 - **Users & access:** multiple users and workspaces per instance, page-level sharing, guests, public share links, comments.
 - **MCP:** let your AI agents (Claude Code, Cursor, …) read and edit pages as you, with scoped, revocable access tokens — see [docs/mcp.md](docs/mcp.md).
