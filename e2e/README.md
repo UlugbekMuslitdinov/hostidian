@@ -57,6 +57,8 @@ extraction pipeline. Anything the plan calls a UI behaviour is driven through th
 | (f) export zip with `[[links]]`, re-import, backlinks | `import-export`, `page-links` |
 | (g) graph shows the edges | `graph` |
 | comments, uploads, light/dark, phone layout | `comments`, `uploads`, `appearance` |
+| users: admin creates accounts (password / set-password link), owner adds an existing user, invite fallback | `admin-users`, `members` |
+| MCP: access tokens create/revoke, `/api/mcp` auth (401 without token / with cookie / revoked) | `tokens` |
 | (c) offline, PWA | added by the pwa-offline work (`offline.spec.ts`, `pwa.spec.ts`) on top of these helpers |
 
 ## CI

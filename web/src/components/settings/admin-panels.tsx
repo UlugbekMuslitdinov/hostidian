@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, ShieldCheck, ShieldOff, UserCheck, UserX } from "lucide-react";
+import { KeyRound, ShieldCheck, ShieldOff, UserCheck, UserPlus, UserX } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/common/copy-button";
 import { FormError, FormField } from "@/components/common/form-field";
+import { OnlineOnly } from "@/components/pwa/online-only";
 import { UserAvatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { useSession } from "@/lib/session";
 import { formatDateTime, formatRelative, useNow } from "@/lib/time";
 import { absoluteUrl } from "@/lib/utils";
 import { validateName } from "@/lib/validation";
+import { AddUserDialog } from "./add-user-dialog";
 import type { AdminUserType } from "./admin-types";
 import { SettingsSection } from "./settings-shell";
 
@@ -34,6 +36,7 @@ export function AdminUsers() {
   const now = useNow();
   const query = useQuery(adminUsersOptions());
   const [resetFor, setResetFor] = useState<AdminUserType | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const update = useMutation({
     mutationFn: (vars: { id: string; disabled?: boolean; isInstanceAdmin?: boolean }) =>
@@ -55,6 +58,17 @@ export function AdminUsers() {
 
   return (
     <SettingsSection title="Users" description="Everyone with an account on this instance.">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="min-w-0 flex-1 basis-60 text-[13px] text-muted-foreground">
+          Create an account yourself, or send an invite link from a workspace&apos;s settings. Hostidian never sends
+          email.
+        </p>
+        <OnlineOnly reason="Adding users needs a connection">
+          <Button onClick={() => setAdding(true)}>
+            <UserPlus /> Add user
+          </Button>
+        </OnlineOnly>
+      </div>
       {query.isPending ? (
         <div className="grid gap-2" aria-busy="true">
           <Skeleton className="h-14" />
@@ -123,6 +137,7 @@ export function AdminUsers() {
         </ul>
       )}
       <ResetLinkDialog user={resetFor} onClose={() => setResetFor(null)} />
+      <AddUserDialog open={adding} onOpenChange={setAdding} />
     </SettingsSection>
   );
 }

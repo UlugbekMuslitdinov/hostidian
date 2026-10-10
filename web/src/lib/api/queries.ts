@@ -181,3 +181,13 @@ export const adminSettingsOptions = () =>
     queryKey: qk.adminSettings(),
     queryFn: ({ signal }) => unwrap(api.GET("/admin/settings", { signal })),
   });
+
+// ------------------------------------------------------------------ access tokens (MCP / agents)
+
+export const apiTokensKey = ["auth", "tokens"] as const;
+
+export const apiTokensOptions = () =>
+  queryOptions({
+    queryKey: apiTokensKey,
+    queryFn: ({ signal }) => unwrap(api.GET("/auth/tokens", { signal })),
+  });

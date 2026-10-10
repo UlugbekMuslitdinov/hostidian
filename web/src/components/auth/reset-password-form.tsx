@@ -43,8 +43,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
   if (reset.isSuccess) {
     return (
       <AuthCard
-        title="Password updated"
-        description="You can now log in with your new password. Other devices were signed out."
+        title="Password set"
+        description="You can now log in with your new password."
       >
         <Button size="lg" className="w-full" asChild>
           <Link href="/login">Go to login</Link>
@@ -65,7 +65,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <AuthCard title="Choose a new password" description="Pick something long and unique.">
+    <AuthCard title="Set your password" description="Pick something long and unique.">
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <FormError message={formError} />
         <FormField label="New password" error={errors.password} hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}>
@@ -92,7 +92,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           )}
         </FormField>
         <Button type="submit" size="lg" disabled={reset.isPending}>
-          {reset.isPending ? "Saving…" : "Set new password"}
+          {reset.isPending ? "Saving…" : "Set password"}
         </Button>
       </form>
     </AuthCard>

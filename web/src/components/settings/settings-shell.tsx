@@ -1,9 +1,9 @@
 "use client";
 
-import { Lock, ShieldCheck, SlidersHorizontal, User, WifiOff } from "lucide-react";
+import { KeyRound, Lock, ShieldCheck, SlidersHorizontal, User, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { TopBar } from "@/components/layout/topbar";
 import { useOnline } from "@/lib/offline/context";
 import { useSession } from "@/lib/session";
@@ -13,6 +13,7 @@ const settingsLinks = [
   { href: "/settings", label: "Profile", icon: User },
   { href: "/settings/security", label: "Security", icon: Lock },
   { href: "/settings/workspace", label: "Workspace", icon: SlidersHorizontal },
+  { href: "/settings/tokens", label: "Access tokens", icon: KeyRound },
 ] as const;
 
 const adminLinks = [
@@ -33,6 +34,16 @@ export function SettingsShell({
   const { user } = useSession();
   const online = useOnline();
   const links = area === "settings" ? settingsLinks : adminLinks;
+  const navRef = useRef<HTMLElement>(null);
+
+  // On a phone the tab row scrolls sideways; keep the current section in view.
+  useEffect(() => {
+    const nav = navRef.current;
+    const el = nav?.querySelector<HTMLElement>("[aria-current=page]");
+    if (nav && el && nav.scrollWidth > nav.clientWidth) {
+      nav.scrollLeft += el.getBoundingClientRect().left - nav.getBoundingClientRect().left - 16;
+    }
+  }, [pathname]);
 
   return (
     <>
@@ -45,6 +56,7 @@ export function SettingsShell({
         <h1 className="pt-6 pb-4 text-2xl font-semibold tracking-tight md:pt-10">{title}</h1>
         <div className="flex flex-col gap-6 md:flex-row md:gap-10">
           <nav
+            ref={navRef}
             aria-label={area === "admin" ? "Admin sections" : "Settings sections"}
             className="no-scrollbar -mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 md:mx-0 md:w-44 md:flex-col md:overflow-visible md:px-0"
           >
@@ -99,7 +111,7 @@ export function SettingsShell({
                   You&apos;re offline.{" "}
                   {area === "admin"
                     ? "Instance administration needs a connection."
-                    : "Account, security, workspace and invite settings need a connection to be saved."}
+                    : "Account, security, workspace, invite and access-token settings need a connection to be saved."}
                 </span>
               </p>
             )}
@@ -119,14 +131,18 @@ export function SettingsSection({
   description,
   children,
   className,
+  ref,
+  id,
 }: {
   title: string;
   description?: ReactNode;
   children: ReactNode;
   className?: string;
+  ref?: Ref<HTMLElement>;
+  id?: string;
 }) {
   return (
-    <section className={cn("border-b py-6 first:pt-0 last:border-b-0", className)}>
+    <section ref={ref} id={id} className={cn("scroll-mt-20 border-b py-6 first:pt-0 last:border-b-0", className)}>
       <div className="mb-4">
         <h2 className="text-base font-semibold">{title}</h2>
         {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}

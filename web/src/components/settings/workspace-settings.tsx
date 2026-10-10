@@ -1,15 +1,16 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, Trash2, UserMinus } from "lucide-react";
+import { LogOut, Trash2, UserMinus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/common/copy-button";
 import { EmptyState } from "@/components/common/empty-state";
 import { FormError, FormField } from "@/components/common/form-field";
 import { IconPicker } from "@/components/page/icon-picker";
+import { OnlineOnly } from "@/components/pwa/online-only";
 import { WorkspaceBadge } from "@/components/sidebar/workspace-switcher";
 import { ImportExportSection } from "@/components/transfer/transfer-panel";
 import {
@@ -38,19 +39,22 @@ import {
   assignableWorkspaceRoles,
   canDeleteWorkspace,
   canInviteMembers,
+  canManageMembers,
   canManageWorkspace,
   canModifyMember,
   WORKSPACE_ROLE_LABELS,
 } from "@/lib/permissions";
+import { useOnline } from "@/lib/offline/context";
 import { useSession } from "@/lib/session";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { formatDateTime } from "@/lib/time";
-import { absoluteUrl, workspaceHref } from "@/lib/utils";
+import { absoluteUrl, cn, copyToClipboard, workspaceHref } from "@/lib/utils";
 import { validateName } from "@/lib/validation";
 import { useOptionalWorkspace } from "@/lib/workspace";
 import type { components, Member, WorkspaceRole } from "@hostidian/api-types";
 
 type InviteRole = components["schemas"]["InviteRole"];
+import { AddMemberPanel, type InviteDraft } from "./add-member-panel";
 import { SettingsSection } from "./settings-shell";
 
 export function WorkspaceSettings() {
@@ -60,11 +64,20 @@ export function WorkspaceSettings() {
     return <EmptyState title="No workspace selected" description="Create or join a workspace to manage it here." />;
   }
   return (
+    <WorkspaceSections />
+  );
+}
+
+function WorkspaceSections() {
+  const ws = useOptionalWorkspaceStrict();
+  // "No account with that email" in Add member hands its email/role to the Invites form below.
+  const [draft, setDraft] = useState<(InviteDraft & { nonce: number }) | null>(null);
+  return (
     <>
       <GeneralSection />
-      <MembersSection />
+      <MembersSection onNeedInvite={(d) => setDraft({ ...d, nonce: (draft?.nonce ?? 0) + 1 })} />
       <ImportExportSection />
-      {canInviteMembers(ws.role) && <InvitesSection />}
+      {canInviteMembers(ws.role) && <InvitesSection draft={draft} />}
       {canDeleteWorkspace(ws.role) && <DangerSection />}
     </>
   );
@@ -183,13 +196,14 @@ function useOptionalWorkspaceStrict() {
 
 // ---------------------------------------------------------------------------------------------
 
-function MembersSection() {
+function MembersSection({ onNeedInvite }: { onNeedInvite: (draft: InviteDraft) => void }) {
   const { workspace, role } = useOptionalWorkspaceStrict();
   const { user } = useSession();
   const qc = useQueryClient();
   const router = useRouter();
   const query = useQuery(membersOptions(workspace.id));
   const [removing, setRemoving] = useState<Member | null>(null);
+  const [adding, setAdding] = useState(false);
   const roles = assignableWorkspaceRoles(role);
 
   const changeRole = useMutation({
@@ -237,6 +251,26 @@ function MembersSection() {
 
   return (
     <SettingsSection title="Members" description="People who belong to this workspace.">
+      {canManageMembers(role) &&
+        (adding ? (
+          <AddMemberPanel
+            workspaceId={workspace.id}
+            actorRole={role}
+            onClose={() => setAdding(false)}
+            onNeedInvite={(draft) => {
+              setAdding(false);
+              onNeedInvite(draft);
+            }}
+          />
+        ) : (
+          <div className="mb-4">
+            <OnlineOnly reason="Adding members needs a connection">
+              <Button variant="outline" onClick={() => setAdding(true)}>
+                <UserPlus /> Add member
+              </Button>
+            </OnlineOnly>
+          </div>
+        ))}
       {query.isPending ? (
         <div className="grid gap-2" aria-busy="true">
           <Skeleton className="h-14" />
@@ -334,14 +368,31 @@ function MembersSection() {
 
 // ---------------------------------------------------------------------------------------------
 
-function InvitesSection() {
+function InvitesSection({ draft }: { draft: (InviteDraft & { nonce: number }) | null }) {
   const { workspace, role } = useOptionalWorkspaceStrict();
   const qc = useQueryClient();
   const query = useQuery(workspaceInvitesOptions(workspace.id));
+  const online = useOnline();
+  const sectionRef = useRef<HTMLElement>(null);
   const [inviteRole, setInviteRole] = useState<InviteRole>("member");
   const [email, setEmail] = useState("");
   const [days, setDays] = useState("7");
   const [error, setError] = useState<string | null>(null);
+  // The invite created in this session: its link is shown prominently (and copied) so it can be sent right away.
+  const [fresh, setFresh] = useState<{ id: string; url: string; copied: boolean } | null>(null);
+
+  // Arriving from "No account with that email": prefill the form, bring the section into view, focus Create.
+  const handled = useRef(0);
+  useEffect(() => {
+    if (!draft || draft.nonce === handled.current) return;
+    handled.current = draft.nonce;
+    setEmail(draft.email);
+    setInviteRole(draft.role === "admin" && role !== "owner" ? "member" : draft.role);
+    setError(null);
+    const section = sectionRef.current;
+    section?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    section?.querySelector<HTMLButtonElement>("button[type=submit]")?.focus({ preventScroll: true });
+  }, [draft, role]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -355,10 +406,15 @@ function InvitesSection() {
           },
         }),
       ),
-    onSuccess: () => {
+    onSuccess: async (invite) => {
       setEmail("");
-      toast.success("Invite created", { description: "Copy the link from the list below." });
-      return qc.invalidateQueries({ queryKey: qk.invites(workspace.id) });
+      const url = absoluteUrl(invite.url);
+      const copied = await copyToClipboard(url);
+      setFresh({ id: invite.id, url, copied });
+      toast.success(copied ? "Invite link copied" : "Invite created", {
+        description: copied ? "Send it to the person yourself — no email is sent." : "Copy the link and send it yourself.",
+      });
+      await qc.invalidateQueries({ queryKey: qk.invites(workspace.id) });
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -370,7 +426,10 @@ function InvitesSection() {
           params: { path: { workspaceId: workspace.id, inviteId: id } },
         }),
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.invites(workspace.id) }),
+    onSuccess: (_d, id) => {
+      setFresh((f) => (f?.id === id ? null : f));
+      return qc.invalidateQueries({ queryKey: qk.invites(workspace.id) });
+    },
     onError: (e) => toast.error("Couldn't revoke the invite", { description: errorMessage(e) }),
   });
 
@@ -385,10 +444,15 @@ function InvitesSection() {
   };
 
   return (
-    <SettingsSection title="Invites" description="Share a link to bring people into this workspace.">
+    <SettingsSection
+      title="Invites"
+      description="Invite someone new with a link. Copy the link and send it yourself — Hostidian doesn't send email."
+      ref={sectionRef}
+      id="invites"
+    >
       <form onSubmit={submit} className="mb-5 grid max-w-xl gap-3" noValidate>
         <FormError message={error} />
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <FormField label="Role">
             {(p) => (
               <NativeSelect {...p} value={inviteRole} onChange={(e) => setInviteRole(e.target.value as InviteRole)}>
@@ -402,13 +466,17 @@ function InvitesSection() {
               </NativeSelect>
             )}
           </FormField>
-          <FormField label="Email (optional)" className="min-w-48 flex-1">
+          <FormField
+            label="Email (optional)"
+            hint="Only this email address can use the link. Leave empty for a link anyone can use."
+            className="min-w-48 flex-1"
+          >
             {(p) => (
               <Input
                 {...p}
                 type="email"
                 value={email}
-                placeholder="Restrict to an email"
+                placeholder="Anyone with the link"
                 onChange={(e) => setEmail(e.target.value)}
               />
             )}
@@ -426,11 +494,36 @@ function InvitesSection() {
               />
             )}
           </FormField>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? "Creating…" : "Create invite"}
-          </Button>
         </div>
+        <Button type="submit" className="w-fit" disabled={create.isPending || !online}>
+          {create.isPending ? "Creating…" : "Create invite link"}
+        </Button>
       </form>
+
+      {fresh && (
+        <div
+          role="status"
+          data-testid="new-invite"
+          className="mb-5 grid max-w-xl gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3.5"
+        >
+          <p className="text-sm font-medium">
+            {fresh.copied ? "Invite link created and copied" : "Invite link created"}
+          </p>
+          <p className="text-[13px] text-muted-foreground">
+            Send this link to the person yourself — no email was sent.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              readOnly
+              value={fresh.url}
+              aria-label="New invite link"
+              className="basis-52 flex-1 font-mono text-[13px]"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <CopyButton value={fresh.url} label="Copy link" size="default" variant="secondary" />
+          </div>
+        </div>
+      )}
 
       {query.isPending ? (
         <Skeleton className="h-14" />
@@ -441,7 +534,13 @@ function InvitesSection() {
       ) : (
         <ul className="divide-y rounded-xl border">
           {query.data.map((invite) => (
-            <li key={invite.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
+            <li
+              key={invite.id}
+              className={cn(
+                "flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3",
+                fresh?.id === invite.id && "bg-primary/5",
+              )}
+            >
               <div className="min-w-0 flex-1 basis-48">
                 <p className="flex flex-wrap items-center gap-2 font-medium">
                   <Badge variant="default">{WORKSPACE_ROLE_LABELS[invite.role]}</Badge>
