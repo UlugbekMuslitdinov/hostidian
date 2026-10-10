@@ -142,6 +142,7 @@ func (s *Server) Handler() http.Handler {
 	root := chi.NewRouter()
 	root.Use(requestID, s.accessLog, s.recoverer)
 	root.Get("/healthz", s.healthz)
+	s.mountPublicRoutes(root) // /api/mcp: bearer-token auth, outside the cookie/CSRF stack (handlers_mcp.go)
 	root.Mount("/api", api)
 	return root
 }

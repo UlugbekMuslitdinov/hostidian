@@ -58,6 +58,9 @@ type Config struct {
 
 	OIDC OIDC
 
+	// MCPEnabled serves the MCP endpoint (/api/mcp); when false it answers 404. Default true.
+	MCPEnabled bool
+
 	Version string
 }
 
@@ -135,6 +138,15 @@ func FromEnv(getenv func(string) string) (*Config, error) {
 	}
 	if err := c.LogLevel.UnmarshalText([]byte(get("LOG_LEVEL", "info"))); err != nil {
 		problems = append(problems, "LOG_LEVEL must be debug, info, warn or error")
+	}
+
+	c.MCPEnabled = true
+	switch strings.ToLower(get("MCP_ENABLED", "true")) {
+	case "true", "1", "yes", "on":
+	case "false", "0", "no", "off":
+		c.MCPEnabled = false
+	default:
+		problems = append(problems, "MCP_ENABLED must be true or false")
 	}
 
 	c.OIDC = OIDC{

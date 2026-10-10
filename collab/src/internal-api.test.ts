@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { documentNameFor } from "./auth";
 import type { ConnectionRegistry } from "./connections";
+import { InvalidMarkdownError, type ApplyRequest } from "./apply-markdown";
 import type { ImportRequest } from "./import-markdown";
 import { createInternalServer, safeEqual } from "./internal-api";
 import { INTERNAL_TOKEN, OTHER_PAGE_ID, OTHER_USER_ID, PAGE_ID, USER_ID, recordingLogger } from "./test-utils";
@@ -24,6 +25,7 @@ function connection(userId: string) {
 let server: Server;
 let baseUrl: string;
 let importMarkdown: ReturnType<typeof vi.fn<(request: ImportRequest) => Promise<"imported" | "page_gone">>>;
+let applyMarkdown: ReturnType<typeof vi.fn<(request: ApplyRequest) => Promise<{ status: "applied"; markdown: string } | { status: "page_gone" }>>>;
 let a1: ReturnType<typeof connection>;
 let a2: ReturnType<typeof connection>;
 let b1: ReturnType<typeof connection>;
@@ -38,9 +40,10 @@ beforeEach(async () => {
     [documentNameFor(OTHER_PAGE_ID), { connections: new Map<typeof a1, unknown>([[b1, {}]]) }],
   ]);
   importMarkdown = vi.fn(async () => "imported");
+  applyMarkdown = vi.fn(async () => ({ status: "applied" as const, markdown: "# Result" }));
   const rec = recordingLogger();
   lines = rec.lines;
-  server = createInternalServer({ token: INTERNAL_TOKEN, registry: { documents }, importMarkdown, logger: rec.logger });
+  server = createInternalServer({ token: INTERNAL_TOKEN, registry: { documents }, importMarkdown, applyMarkdown, logger: rec.logger });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -73,7 +76,7 @@ describe("health", () => {
 });
 
 describe("bearer authentication", () => {
-  it.each(["/internal/disconnect", "/internal/import-markdown"])("%s rejects missing and wrong tokens", async (path) => {
+  it.each(["/internal/disconnect", "/internal/import-markdown", "/internal/apply-markdown"])("%s rejects missing and wrong tokens", async (path) => {
     const body = { pageId: PAGE_ID, markdown: "x" };
     for (const headers of [
       {} as Record<string, string>,
@@ -222,5 +225,36 @@ describe("routing", () => {
 
   it("ignores query strings", async () => {
     expect((await fetch(`${baseUrl}/internal/health?x=1`)).status).toBe(200);
+  });
+});
+
+describe("POST /internal/apply-markdown", () => {
+  const valid = { pageId: PAGE_ID, markdown: "more", mode: "append", editorId: USER_ID };
+
+  it("passes the normalised request on and returns the resulting markdown", async () => {
+    const res = await post("/internal/apply-markdown", { ...valid, pageId: PAGE_ID.toUpperCase() });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ markdown: "# Result" });
+    expect(applyMarkdown).toHaveBeenCalledExactlyOnceWith({ pageId: PAGE_ID, markdown: "more", mode: "append", editorId: USER_ID });
+  });
+
+  it.each([
+    [{ ...valid, mode: "overwrite" }, "mode"],
+    [{ ...valid, editorId: undefined }, "editorId"],
+    [{ ...valid, pageId: "nope" }, "pageId"],
+    [{ ...valid, markdown: 5 }, "markdown"],
+    [{ ...valid, markdown: "x".repeat(1_000_001) }, "markdown"],
+  ])("rejects an invalid body with 422 (%#)", async (body, field) => {
+    const res = await post("/internal/apply-markdown", body);
+    expect(res.status).toBe(422);
+    expect((await res.json()).error.details).toHaveProperty(field);
+    expect(applyMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for a page that is gone and 422 for unparsable markdown", async () => {
+    applyMarkdown.mockResolvedValueOnce({ status: "page_gone" });
+    expect((await post("/internal/apply-markdown", valid)).status).toBe(404);
+    applyMarkdown.mockRejectedValueOnce(new InvalidMarkdownError("bad"));
+    expect((await post("/internal/apply-markdown", valid)).status).toBe(422);
   });
 });

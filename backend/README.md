@@ -24,7 +24,10 @@ internal/
   oidc/                   optional OIDC (PKCE/state/nonce) + the pure account-linking policy
   workspaces/             workspaces, members, invites
   pages/                  page tree, trash, favorites, sharing (grants), collab tokens
-  collabclient/           POST {collab}/internal/disconnect (best effort, async)
+  collabclient/           POST {collab}/internal/{disconnect,apply-markdown,import-markdown} (disconnect is best effort, async)
+  content/ files/ comments/ shares/ transfer/   search/backlinks/graph/ingestion, attachments (+janitor sweep), comments, public shares, import/export
+  apitokens/              personal access tokens (hst_…, SHA-256 at rest, scope, workspace restriction, rate limit)
+  mcp/                    MCP server at /api/mcp (go-sdk): tools/resource over the same domain services; see docs/mcp.md
   deps/                   dependency bundle shared with domain packages
   apperr/                 error type that maps 1:1 onto the error envelope
   validate/ tokens/       input rules, random tokens

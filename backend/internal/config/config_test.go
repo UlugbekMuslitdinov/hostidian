@@ -120,3 +120,18 @@ func TestWeakSecrets(t *testing.T) {
 		t.Fatalf("weak = %q", weak)
 	}
 }
+
+func TestMCPEnabled(t *testing.T) {
+	for value, want := range map[string]bool{"": true, "true": true, "1": true, "false": false, "FALSE": false, "0": false} {
+		c, err := FromEnv(env(with(map[string]string{"MCP_ENABLED": value})))
+		if err != nil {
+			t.Fatalf("MCP_ENABLED=%q: %v", value, err)
+		}
+		if c.MCPEnabled != want {
+			t.Fatalf("MCP_ENABLED=%q: MCPEnabled = %v, want %v", value, c.MCPEnabled, want)
+		}
+	}
+	if _, err := FromEnv(env(with(map[string]string{"MCP_ENABLED": "maybe"}))); err == nil || !strings.Contains(err.Error(), "MCP_ENABLED") {
+		t.Fatalf("expected a MCP_ENABLED problem, got %v", err)
+	}
+}

@@ -1,5 +1,6 @@
 import { Server } from "@hocuspocus/server";
 import type { Pool } from "pg";
+import { applyMarkdown } from "./apply-markdown";
 import { createAuthExtension, type ConnectionContext } from "./auth";
 import type { Config } from "./config";
 import { ContentSync } from "./content-sync";
@@ -117,6 +118,7 @@ export function createCollabServer(config: Config, overrides: CollabServerOverri
     token: config.internalToken,
     registry: collab.hocuspocus,
     importMarkdown: (request) => importMarkdown({ hocuspocus: collab.hocuspocus, persister, sync }, request),
+    applyMarkdown: (request) => applyMarkdown({ hocuspocus: collab.hocuspocus, persister, sync }, request),
     logger: logger.child({ component: "internal-api" }),
   });
 

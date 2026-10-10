@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { InvalidMarkdownError, type ApplyMode, type ApplyRequest } from "./apply-markdown";
 import { isUuid } from "./auth";
 import { closeMatchingConnections, type ConnectionRegistry } from "./connections";
 import type { ImportRequest } from "./import-markdown";
@@ -16,11 +17,16 @@ export interface InternalApiDeps {
   token: string;
   registry: ConnectionRegistry;
   importMarkdown(request: ImportRequest): Promise<"imported" | "page_gone">;
+  applyMarkdown(request: ApplyRequest): Promise<{ status: "applied"; markdown: string } | { status: "page_gone" }>;
   logger: Logger;
 }
 
 const DISCONNECT_BODY_LIMIT = 16 * 1024;
 const IMPORT_BODY_LIMIT = 32 * 1024 * 1024;
+/** `markdown` is capped at 1,000,000 characters (up to ~4 MB of UTF-8) plus JSON escaping. */
+const APPLY_BODY_LIMIT = 8 * 1024 * 1024;
+const APPLY_MAX_CHARACTERS = 1_000_000;
+const APPLY_MODES: readonly ApplyMode[] = ["replace", "append", "prepend"];
 const DEFAULT_DISCONNECT_REASON = "permissions_changed";
 
 class HttpError extends Error {
@@ -126,6 +132,22 @@ function parseImport(body: Record<string, unknown>): ImportRequest {
   return { pageId, markdown: body.markdown, ...(editorId ? { editorId } : {}) };
 }
 
+function parseApply(body: Record<string, unknown>): ApplyRequest {
+  const details: Record<string, string> = {};
+  const pageId = optionalUuid(body, "pageId", details);
+  if (!pageId && !details.pageId) details.pageId = "is required";
+  const editorId = optionalUuid(body, "editorId", details);
+  if (!editorId && !details.editorId) details.editorId = "is required";
+  if (typeof body.markdown !== "string") details.markdown = "must be a string";
+  else if (body.markdown.length > APPLY_MAX_CHARACTERS) details.markdown = `must be at most ${APPLY_MAX_CHARACTERS} characters`;
+  const mode = APPLY_MODES.find((candidate) => candidate === body.mode);
+  if (!mode) details.mode = "must be one of replace, append, prepend";
+  if (Object.keys(details).length > 0 || !pageId || !editorId || !mode || typeof body.markdown !== "string") {
+    throw new HttpError(422, "validation_failed", "Invalid apply request.", details);
+  }
+  return { pageId, editorId, mode, markdown: body.markdown };
+}
+
 function isAuthorized(req: IncomingMessage, token: string): boolean {
   const header = req.headers.authorization;
   if (!header) return false;
@@ -151,6 +173,7 @@ export function createInternalServer(deps: InternalApiDeps): Server {
     const handlers: Record<string, string> = {
       "/internal/disconnect": "POST",
       "/internal/import-markdown": "POST",
+      "/internal/apply-markdown": "POST",
     };
     const allowed = path === undefined ? undefined : handlers[path];
     if (!allowed) throw new HttpError(404, "not_found", "No such endpoint.");
@@ -165,6 +188,20 @@ export function createInternalServer(deps: InternalApiDeps): Server {
       const closed = closeMatchingConnections(deps.registry, criteria);
       logger.info("connections closed on request", { ...criteria, closed });
       return sendJson(res, 200, { closed });
+    }
+
+    if (path === "/internal/apply-markdown") {
+      const request = parseApply(await readJsonObject(req, APPLY_BODY_LIMIT));
+      let outcome;
+      try {
+        outcome = await deps.applyMarkdown(request);
+      } catch (error) {
+        if (error instanceof InvalidMarkdownError) throw new HttpError(422, "validation_failed", error.message, { markdown: error.message });
+        throw error;
+      }
+      if (outcome.status === "page_gone") throw new HttpError(404, "not_found", "The page does not exist.");
+      logger.info("markdown applied", { pageId: request.pageId, mode: request.mode, bytes: request.markdown.length });
+      return sendJson(res, 200, { markdown: outcome.markdown });
     }
 
     const request = parseImport(await readJsonObject(req, IMPORT_BODY_LIMIT));

@@ -4,6 +4,7 @@ Self-hosted, multi-user, real-time collaborative notes — a Notion-style editor
 
 - **Automatic sync** between all your devices (the server is the source of truth; edits merge via Yjs CRDTs, even offline).
 - **Users & access:** multiple users and workspaces per instance, page-level sharing, guests, public share links, comments.
+- **MCP:** let your AI agents (Claude Code, Cursor, …) read and edit pages as you, with scoped, revocable access tokens — see [docs/mcp.md](docs/mcp.md).
 - **Docker-first:** `docker compose up` brings up Postgres, the Go API, the collaboration server, the Next.js web app and Caddy (automatic HTTPS).
 - **Open source:** AGPL-3.0.
 
