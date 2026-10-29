@@ -77,6 +77,7 @@ export function applyWorkspaceEvent(qc: QueryClient, event: WorkspaceEvent, sche
         qc.setQueryData<PageSummary[]>(qk.pages(ws), (old) => (old ? upsertPage(old, page) : old));
       }
       refreshLists();
+      schedule(qk.githubIssues(ws), 2000); // a page created by the GitHub sync brings a new #number
       break;
     }
     case "page.updated": {

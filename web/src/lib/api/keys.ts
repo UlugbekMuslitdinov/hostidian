@@ -18,6 +18,8 @@ export const qk = {
   search: (workspaceId: string, mode: "title" | "full", q: string) =>
     ["workspace", workspaceId, "search", mode, q] as const,
   graph: (workspaceId: string) => ["workspace", workspaceId, "graph"] as const,
+  githubIssues: (workspaceId: string) => ["workspace", workspaceId, "github-issues"] as const,
+  githubConnections: (workspaceId: string) => ["workspace", workspaceId, "github-connections"] as const,
 
   page: (pageId: string) => ["page", pageId] as const,
   pagePermissions: (pageId: string) => ["page", pageId, "permissions"] as const,

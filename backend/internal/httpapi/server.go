@@ -35,7 +35,8 @@ type Server struct {
 	Pages      *pages.Service
 	OIDC       *oidc.Provider
 
-	operations operationTable
+	operations    operationTable
+	githubAPIBase string
 
 	extMu sync.Mutex
 	ext   map[string]any
@@ -50,6 +51,8 @@ type Options struct {
 	Limiter    *auth.Limiter
 	Now        func() time.Time
 	OIDCClient *http.Client
+	// GitHubAPIBase replaces https://api.github.com (tests, GitHub Enterprise).
+	GitHubAPIBase string
 }
 
 // NewServer wires the domain services.
@@ -58,7 +61,7 @@ func NewServer(d *deps.Deps, o Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{Deps: d, operations: ops, ext: map[string]any{}, extOnce: map[string]*sync.Once{}}
+	s := &Server{Deps: d, operations: ops, githubAPIBase: o.GitHubAPIBase, ext: map[string]any{}, extOnce: map[string]*sync.Once{}}
 	s.Auth = auth.NewService(auth.Options{
 		Config: d.Config, Pool: d.Pool, Broker: d.Broker, Collab: d.Collab, Hasher: o.Hasher, Limiter: o.Limiter,
 		Log: d.Log, Now: o.Now,

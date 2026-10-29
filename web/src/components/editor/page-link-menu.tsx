@@ -3,6 +3,7 @@
 import { SuggestionMenuController, type DefaultReactSuggestionItem } from "@blocknote/react";
 import { FilePlus2, FileText, Plus } from "lucide-react";
 import type { PageSummary } from "@hostidian/api-types";
+import { hasMultipleRepos, issueLabel, type IssueIndex } from "@/lib/github";
 import { cleanNewPageTitle, parentPath, rankPages, shouldOfferCreate } from "./page-link-search";
 import type { HEditor } from "./editor-types";
 
@@ -19,20 +20,25 @@ export interface PageLinkMenuProps {
   currentPageId: string;
   /** Create a page with the typed title and return its id (client-generated, offline-safe). */
   onCreate: (title: string) => string | undefined;
+  /** Pages synced with GitHub issues: found by `#123` / `repo#123` and labelled with their number. */
+  issues?: IssueIndex;
 }
 
 /**
  * The `[[` page picker. Runs entirely on the cached tree (offline, no round trip per keystroke) and offers
  * "Create page" when the typed title doesn't already exist. Must be rendered inside the `<BlockNoteView>`.
  */
-export function PageLinkMenu({ editor, pages, currentPageId, onCreate }: PageLinkMenuProps) {
+export function PageLinkMenu({ editor, pages, currentPageId, onCreate, issues }: PageLinkMenuProps) {
   const getItems = async (query: string): Promise<DefaultReactSuggestionItem[]> => {
     const pagesArray = pages as PageSummary[];
-    const items: DefaultReactSuggestionItem[] = rankPages(pagesArray, query, { excludeId: currentPageId }).map((page) => {
+    const withRepo = issues ? hasMultipleRepos(issues.values()) : false;
+    const items: DefaultReactSuggestionItem[] = rankPages(pagesArray, query, { excludeId: currentPageId, issues }).map((page) => {
       const path = parentPath(pagesArray, page);
+      const issue = issues?.get(page.id.toLowerCase());
+      const subtext = [issue ? issueLabel(issue, withRepo) : "", path].filter(Boolean).join(" · ");
       return {
         title: page.title.trim() || "Untitled",
-        subtext: path || undefined,
+        subtext: subtext || undefined,
         group: "Link to page",
         icon: <PageGlyph icon={page.icon} />,
         onItemClick: () => {

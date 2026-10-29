@@ -47,4 +47,5 @@ func (s *Server) mountPublicRoutes(root chi.Router) {
 	h := mcpHandler(s)
 	root.Handle("/api/mcp", h)
 	root.Handle("/api/mcp/", h)
+	s.mountGithubWebhook(root) // signature-authenticated, no session (handlers_github.go)
 }

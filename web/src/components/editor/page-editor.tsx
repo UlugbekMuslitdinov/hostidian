@@ -21,7 +21,8 @@ import { ThreadBadges } from "@/components/comments/thread-badges";
 import { usePublishConnection, usePublishPresence } from "@/components/page/presence";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageActions } from "@/hooks/use-page-actions";
-import { pagesOptions } from "@/lib/api/queries";
+import { githubIssuesOptions, pagesOptions } from "@/lib/api/queries";
+import { buildIssueIndex } from "@/lib/github";
 import { CONNECTION_LABELS, type ConnectionState } from "@/lib/collab/connection";
 import type { CollabSession } from "@/lib/collab/session";
 import { usePageCollab, usePeers } from "@/lib/collab/use-page-collab";
@@ -88,6 +89,8 @@ function CollabEditor({
   const { createPage } = usePageActions();
   const pageLinkIndex = usePageLinkIndex(workspace.id);
   const pages = useQuery(pagesOptions(workspace.id)).data ?? [];
+  const issueRefs = useQuery(githubIssuesOptions(workspace.id)).data;
+  const issues = useMemo(() => buildIssueIndex(issueRefs), [issueRefs]);
   const resolvedTheme = useTheme().resolvedTheme;
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -153,7 +156,7 @@ function CollabEditor({
           className="hostidian-editor"
         >
           <SlashMenu editor={editor} />
-          <PageLinkMenu editor={editor} pages={pages} currentPageId={pageId} onCreate={onCreatePage} />
+          <PageLinkMenu editor={editor} pages={pages} currentPageId={pageId} onCreate={onCreatePage} issues={issues} />
           <SideMenuController sideMenu={CommentSideMenu} />
           <FormattingToolbarController formattingToolbar={CommentFormattingToolbar} />
         </BlockNoteView>

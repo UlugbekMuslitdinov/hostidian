@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, Lock, ShieldCheck, SlidersHorizontal, User, WifiOff } from "lucide-react";
+import { GitBranch, KeyRound, Lock, ShieldCheck, SlidersHorizontal, User, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
@@ -13,6 +13,7 @@ const settingsLinks = [
   { href: "/settings", label: "Profile", icon: User },
   { href: "/settings/security", label: "Security", icon: Lock },
   { href: "/settings/workspace", label: "Workspace", icon: SlidersHorizontal },
+  { href: "/settings/github", label: "GitHub", icon: GitBranch },
   { href: "/settings/tokens", label: "Access tokens", icon: KeyRound },
 ] as const;
 

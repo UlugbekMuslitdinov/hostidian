@@ -21,6 +21,7 @@ tags:
   - name: transfer
   - name: events
   - name: tokens
+  - name: integrations
 
 security:
   - cookieAuth: []
@@ -682,6 +683,136 @@ paths:
       responses:
         '204': { description: Revoked }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ integrations (GitHub issue sync)
+  # GitHub's webhook deliveries go to POST /api/integrations/github/webhook/{connectionId}. That endpoint is not
+  # part of this contract: it carries no session and is authenticated by the X-Hub-Signature-256 header.
+  /workspaces/{workspaceId}/integrations/github:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [integrations]
+      operationId: listGithubConnections
+      summary: Owner/admin only. The repositories synced with this workspace (never includes the token).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GithubConnection' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [integrations]
+      operationId: createGithubConnection
+      summary: "Owner/admin only. Connects a repository and schedules the initial import of its issues. The token is checked against GitHub before anything is stored."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repository, token]
+              properties:
+                repository: { type: string, description: 'owner/name or a github.com URL' }
+                token: { type: string, description: 'Fine-grained or classic personal access token with read/write access to the repository issues. Write-only.' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GithubConnection' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /workspaces/{workspaceId}/github-issues:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+    get:
+      tags: [integrations]
+      operationId: listGithubIssues
+      summary: "Every synced page the caller can view with its issue number. Powers `[[#123]]` in the page picker."
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GithubIssueRef' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /integrations/github/{connectionId}:
+    parameters:
+      - { $ref: '#/components/parameters/GithubConnectionId' }
+    patch:
+      tags: [integrations]
+      operationId: updateGithubConnection
+      summary: "Owner/admin only. Pause or resume the sync, or replace the token (the caller then becomes the user GitHub-originated edits are attributed to)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                token: { type: string, description: Write-only }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GithubConnection' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [integrations]
+      operationId: deleteGithubConnection
+      summary: "Owner/admin only. Disconnects the repository. Synced pages stay as ordinary pages; nothing is deleted on GitHub."
+      responses:
+        '204': { description: Disconnected }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /integrations/github/{connectionId}/sync:
+    parameters:
+      - { $ref: '#/components/parameters/GithubConnectionId' }
+    post:
+      tags: [integrations]
+      operationId: syncGithubConnection
+      summary: Owner/admin only. Schedules an immediate sync pass.
+      responses:
+        '202': { description: Scheduled }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{pageId}/github/state:
+    parameters:
+      - { $ref: '#/components/parameters/PageId' }
+    put:
+      tags: [integrations]
+      operationId: setGithubIssueState
+      summary: "Closes or reopens the GitHub issue behind a synced page. Needs `edit` on the page."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { $ref: '#/components/schemas/GithubIssueState' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageGithub' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   # ------------------------------------------------------------------ pages
   /workspaces/{workspaceId}/pages:
@@ -1503,6 +1634,12 @@ components:
       required: true
       schema: { type: string }
 
+    GithubConnectionId:
+      name: connectionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
   responses:
     Unauthorized:
       description: Not authenticated
@@ -1683,6 +1820,50 @@ components:
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
 
+    GithubIssueState:
+      type: string
+      enum: [open, closed]
+
+    GithubConnection:
+      type: object
+      required: [id, workspaceId, repository, enabled, syncUserId, webhookUrl, webhookSecret, backfilled, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        repository: { type: string, description: 'owner/name' }
+        enabled: { type: boolean }
+        rootPageId: { type: string, format: uuid, nullable: true, description: 'Parent page of the synced issue pages; null until the first sync' }
+        syncUserId: { type: string, format: uuid, description: GitHub-originated edits are attributed to this user }
+        webhookUrl: { type: string, description: Payload URL to register in the repository's webhook settings }
+        webhookSecret: { type: string, description: Secret for the webhook (Content type must be application/json) }
+        backfilled: { type: boolean, description: The initial import of existing issues has finished }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        lastError: { type: string, nullable: true, description: Why the last pass failed; null when it succeeded }
+        createdAt: { type: string, format: date-time }
+
+    GithubIssueRef:
+      type: object
+      required: [pageId, number, repository, state, url]
+      properties:
+        pageId: { type: string, format: uuid }
+        number: { type: integer }
+        repository: { type: string, description: 'owner/name' }
+        state: { $ref: '#/components/schemas/GithubIssueState' }
+        url: { type: string }
+
+    PageGithub:
+      type: object
+      description: The GitHub issue a page is synced with, and how the sync is doing
+      required: [connectionId, repository, number, url, state, lastSyncedAt]
+      properties:
+        connectionId: { type: string, format: uuid }
+        repository: { type: string, description: 'owner/name' }
+        number: { type: integer }
+        url: { type: string }
+        state: { $ref: '#/components/schemas/GithubIssueState' }
+        lastSyncedAt: { type: string, format: date-time }
+        error: { type: string, nullable: true, description: Set while the last attempt to sync this page failed }
+
     TokenScope:
       type: string
       description: "`read` = read-only tools; `write` = may also create/edit/move/archive/comment"
@@ -1762,6 +1943,7 @@ components:
           items: { $ref: '#/components/schemas/PageRef' }
         isFavorite: { type: boolean }
         lastEditedBy: { $ref: '#/components/schemas/UserRef' }   # absent when unknown
+        github: { $ref: '#/components/schemas/PageGithub' }       # absent unless the page is synced with a GitHub issue
 
     PermissionEntry:
       type: object

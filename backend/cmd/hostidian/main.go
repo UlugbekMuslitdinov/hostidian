@@ -86,6 +86,7 @@ func run() error {
 	}
 
 	go janitor(ctx, server, log)
+	go server.RunGitHubSync(ctx)
 
 	errc := make(chan error, 2)
 	serve := func(name string, srv *http.Server) {

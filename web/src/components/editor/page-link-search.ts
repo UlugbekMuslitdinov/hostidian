@@ -1,4 +1,5 @@
 import type { PageSummary } from "@hostidian/api-types";
+import { scoreIssueRef, type IssueIndex } from "@/lib/github";
 import { pageTitle } from "@/lib/utils";
 
 /**
@@ -46,6 +47,8 @@ export function scoreTitle(title: string, query: string): number {
 export interface RankOptions {
   excludeId?: string;
   limit?: number;
+  /** Pages synced with GitHub issues, so `[[#123]]` and `[[site#123]]` find them. */
+  issues?: IssueIndex;
 }
 
 /** Best matches first; with an empty query, the most recently edited pages. */
@@ -54,7 +57,8 @@ export function rankPages(pages: readonly PageSummary[], query: string, options:
   const scored: Array<{ page: PageSummary; score: number }> = [];
   for (const page of pages) {
     if (page.archivedAt || page.id === options.excludeId) continue;
-    const score = scoreTitle(page.title, query);
+    const issue = options.issues?.get(page.id.toLowerCase());
+    const score = Math.max(scoreTitle(page.title, query), issue ? scoreIssueRef(issue, query) : 0);
     if (score > 0) scored.push({ page, score });
   }
   scored.sort(

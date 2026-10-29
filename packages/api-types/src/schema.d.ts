@@ -472,6 +472,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{workspaceId}/integrations/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        /** Owner/admin only. The repositories synced with this workspace (never includes the token). */
+        get: operations["listGithubConnections"];
+        put?: never;
+        /** Owner/admin only. Connects a repository and schedules the initial import of its issues. The token is checked against GitHub before anything is stored. */
+        post: operations["createGithubConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspaceId}/github-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        /** Every synced page the caller can view with its issue number. Powers `[[#123]]` in the page picker. */
+        get: operations["listGithubIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/github/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["GithubConnectionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Owner/admin only. Disconnects the repository. Synced pages stay as ordinary pages; nothing is deleted on GitHub. */
+        delete: operations["deleteGithubConnection"];
+        options?: never;
+        head?: never;
+        /** Owner/admin only. Pause or resume the sync, or replace the token (the caller then becomes the user GitHub-originated edits are attributed to). */
+        patch: operations["updateGithubConnection"];
+        trace?: never;
+    };
+    "/integrations/github/{connectionId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["GithubConnectionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Owner/admin only. Schedules an immediate sync pass. */
+        post: operations["syncGithubConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{pageId}/github/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Closes or reopens the GitHub issue behind a synced page. Needs `edit` on the page. */
+        put: operations["setGithubIssueState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspaceId}/pages": {
         parameters: {
             query?: never;
@@ -1275,6 +1372,62 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @enum {string} */
+        GithubIssueState: "open" | "closed";
+        GithubConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workspaceId: string;
+            /** @description owner/name */
+            repository: string;
+            enabled: boolean;
+            /**
+             * Format: uuid
+             * @description Parent page of the synced issue pages; null until the first sync
+             */
+            rootPageId?: string | null;
+            /**
+             * Format: uuid
+             * @description GitHub-originated edits are attributed to this user
+             */
+            syncUserId: string;
+            /** @description Payload URL to register in the repository's webhook settings */
+            webhookUrl: string;
+            /** @description Secret for the webhook (Content type must be application/json) */
+            webhookSecret: string;
+            /** @description The initial import of existing issues has finished */
+            backfilled: boolean;
+            /** Format: date-time */
+            lastSyncedAt?: string | null;
+            /** @description Why the last pass failed; null when it succeeded */
+            lastError?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        GithubIssueRef: {
+            /** Format: uuid */
+            pageId: string;
+            number: number;
+            /** @description owner/name */
+            repository: string;
+            state: components["schemas"]["GithubIssueState"];
+            url: string;
+        };
+        /** @description The GitHub issue a page is synced with, and how the sync is doing */
+        PageGithub: {
+            /** Format: uuid */
+            connectionId: string;
+            /** @description owner/name */
+            repository: string;
+            number: number;
+            url: string;
+            state: components["schemas"]["GithubIssueState"];
+            /** Format: date-time */
+            lastSyncedAt: string;
+            /** @description Set while the last attempt to sync this page failed */
+            error?: string | null;
+        };
         /**
          * @description `read` = read-only tools; `write` = may also create/edit/move/archive/comment
          * @enum {string}
@@ -1349,6 +1502,7 @@ export interface components {
             breadcrumbs: components["schemas"]["PageRef"][];
             isFavorite: boolean;
             lastEditedBy?: components["schemas"]["UserRef"];
+            github?: components["schemas"]["PageGithub"];
         };
         PermissionEntry: {
             user: components["schemas"]["MemberUser"];
@@ -1562,6 +1716,7 @@ export interface components {
         FileId: string;
         ThreadId: string;
         ShareToken: string;
+        GithubConnectionId: string;
     };
     requestBodies: never;
     headers: never;
@@ -2508,6 +2663,192 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    listGithubConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubConnection"][];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description owner/name or a github.com URL */
+                    repository: string;
+                    /** @description Fine-grained or classic personal access token with read/write access to the repository issues. Write-only. */
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubConnection"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Validation"];
+        };
+    };
+    listGithubIssues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubIssueRef"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["GithubConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["GithubConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled?: boolean;
+                    /** @description Write-only */
+                    token?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubConnection"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Validation"];
+        };
+    };
+    syncGithubConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["GithubConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scheduled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setGithubIssueState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    state: components["schemas"]["GithubIssueState"];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageGithub"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Validation"];
         };
     };
     listPages: {
