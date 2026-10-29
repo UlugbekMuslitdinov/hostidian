@@ -106,6 +106,10 @@ type envOpts struct {
 	configure func(env map[string]string)
 	hasher    *auth.Hasher
 	oidc      *http.Client
+	// githubBase points the GitHub sync at a fake API.
+	githubBase string
+	// collab replaces the disconnect recorder (it can also implement collabclient.Applier).
+	collab func(*pgxpool.Pool) collabclient.Disconnecter
 }
 
 func newEnv(t *testing.T, opts ...func(*envOpts)) *env {
@@ -144,8 +148,12 @@ func newEnv(t *testing.T, opts ...func(*envOpts)) *env {
 	if hasher == nil {
 		hasher = auth.NewHasher(auth.HashParams{MemoryKiB: 64, Time: 1, Threads: 1}) // fast; params are covered in auth tests
 	}
-	srv, err := httpapi.NewServer(&deps.Deps{Config: cfg, Log: log, Pool: pool, Q: q, Broker: broker, Collab: rec}, httpapi.Options{
-		Hasher: hasher, Now: clock.Now, OIDCClient: o.oidc,
+	var collab collabclient.Disconnecter = rec
+	if o.collab != nil {
+		collab = o.collab(pool)
+	}
+	srv, err := httpapi.NewServer(&deps.Deps{Config: cfg, Log: log, Pool: pool, Q: q, Broker: broker, Collab: collab}, httpapi.Options{
+		Hasher: hasher, Now: clock.Now, OIDCClient: o.oidc, GitHubAPIBase: o.githubBase,
 	})
 	if err != nil {
 		t.Fatal(err)

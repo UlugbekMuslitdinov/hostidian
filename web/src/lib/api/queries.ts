@@ -46,6 +46,25 @@ export const pagesOptions = (workspaceId: string) =>
       unwrap(api.GET("/workspaces/{workspaceId}/pages", { params: { path: { workspaceId } }, signal })),
   });
 
+/** Synced pages with their issue numbers: powers `[[#123]]` in the page picker. Workspaces without GitHub get []. */
+export const githubIssuesOptions = (workspaceId: string) =>
+  queryOptions({
+    queryKey: qk.githubIssues(workspaceId),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET("/workspaces/{workspaceId}/github-issues", { params: { path: { workspaceId } }, signal })),
+    staleTime: 60_000,
+  });
+
+/** Owner/admin only. */
+export const githubConnectionsOptions = (workspaceId: string) =>
+  queryOptions({
+    queryKey: qk.githubConnections(workspaceId),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET("/workspaces/{workspaceId}/integrations/github", { params: { path: { workspaceId } }, signal })),
+    // The sync runs in the background: keep status and "last synced" fresh while the panel is open.
+    refetchInterval: 15_000,
+  });
+
 export const favoritesOptions = (workspaceId: string) =>
   queryOptions({
     queryKey: qk.favorites(workspaceId),

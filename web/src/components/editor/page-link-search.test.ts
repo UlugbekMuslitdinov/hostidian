@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildIssueIndex } from "@/lib/github";
 import { makePage } from "@/test/factories";
 import { cleanNewPageTitle, parentPath, rankPages, scoreTitle, shouldOfferCreate } from "./page-link-search";
 
@@ -104,5 +105,33 @@ describe("create entry", () => {
   it("cleans the query into a title", () => {
     expect(cleanNewPageTitle("  Two\n  words ")).toBe("Two words");
     expect(cleanNewPageTitle("x".repeat(600))).toHaveLength(500);
+  });
+});
+
+describe("rankPages with GitHub issues", () => {
+  const login = makePage({ id: "00000000-0000-4000-8000-000000000012", title: "Login is broken" });
+  const roadmap = makePage({ id: "00000000-0000-4000-8000-000000000099", title: "Roadmap #12 ideas" });
+  const plain = makePage({ title: "Meeting notes" });
+  const issues = buildIssueIndex([
+    { pageId: login.id, number: 12, repository: "acme/site", state: "open", url: "https://github.com/acme/site/issues/12" },
+  ]);
+
+  it("finds an issue page by its number even though the title never mentions it", () => {
+    const result = rankPages([plain, roadmap, login], "#12", { issues });
+    expect(result[0]).toBe(login);
+    expect(result).toContain(roadmap); // a title that merely contains the text still matches, lower
+  });
+
+  it("understands repo#number and ignores other repositories", () => {
+    expect(rankPages([login, plain], "site#12", { issues })).toEqual([login]);
+    expect(rankPages([login, plain], "api#12", { issues })).toEqual([]);
+  });
+
+  it("does nothing without an index", () => {
+    expect(rankPages([login], "#12")).toEqual([]);
+  });
+
+  it("does not change ordinary title search", () => {
+    expect(rankPages([login, plain], "login", { issues })).toEqual([login]);
   });
 });

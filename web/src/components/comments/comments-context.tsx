@@ -15,6 +15,7 @@ import { canComment, canView } from "@/lib/permissions";
 import { groupThreads, type ThreadGroups } from "./anchoring";
 import { useCommentActions, useCommentThreads, type CommentActions } from "./use-comments";
 import type { CommentThread } from "@hostidian/api-types";
+import { GITHUB_THREAD_BLOCK_ID } from "@/lib/github";
 
 export interface ComposerTarget {
   blockId: string;
@@ -104,7 +105,7 @@ export function CommentsProvider({
       setPanelOpen(true);
       setComposer(null);
       const thread = list.find((t) => t.id === threadId);
-      if (thread) scroller.current?.(thread.blockId);
+      if (thread && thread.blockId !== GITHUB_THREAD_BLOCK_ID) scroller.current?.(thread.blockId);
     },
     [list],
   );

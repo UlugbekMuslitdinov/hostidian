@@ -1,4 +1,5 @@
 import type { CommentThread } from "@hostidian/api-types";
+import { GITHUB_THREAD_BLOCK_ID } from "@/lib/github";
 
 /**
  * Pure logic behind block-anchored comments (conventions §10): which thread hangs off which block, which
@@ -56,7 +57,8 @@ export function groupThreads(
   const views: ThreadView[] = threads.map((thread) => ({
     thread,
     resolved: Boolean(thread.resolvedAt),
-    detached: position !== null && !position.has(thread.blockId),
+    // The GitHub discussion belongs to the page, not to a block, so it can never lose its anchor.
+    detached: position !== null && thread.blockId !== GITHUB_THREAD_BLOCK_ID && !position.has(thread.blockId),
     pending: isPendingThread(thread),
   }));
 
@@ -69,7 +71,10 @@ export function groupThreads(
   const attached = shown.filter((v) => !v.detached);
   const detached = shown.filter((v) => v.detached).sort(byCreated);
 
+  const isGithub = (v: ThreadView) => v.thread.blockId === GITHUB_THREAD_BLOCK_ID;
   attached.sort((a, b) => {
+    // The page-level GitHub discussion comes first, ahead of every block.
+    if (isGithub(a) !== isGithub(b)) return isGithub(a) ? -1 : 1;
     if (position) {
       const delta = (position.get(a.thread.blockId) ?? 0) - (position.get(b.thread.blockId) ?? 0);
       if (delta !== 0) return delta;

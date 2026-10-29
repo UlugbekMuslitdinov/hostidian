@@ -84,6 +84,24 @@ func (e ErrorErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for GithubIssueState.
+const (
+	Closed GithubIssueState = "closed"
+	Open   GithubIssueState = "open"
+)
+
+// Valid indicates whether the value is a known member of the GithubIssueState enum.
+func (e GithubIssueState) Valid() bool {
+	switch e {
+	case Closed:
+		return true
+	case Open:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ImportJobStatus.
 const (
 	Done    ImportJobStatus = "done"
@@ -348,6 +366,49 @@ type Error struct {
 // ErrorErrorCode defines model for Error.Error.Code.
 type ErrorErrorCode string
 
+// GithubConnection defines model for GithubConnection.
+type GithubConnection struct {
+	// Backfilled The initial import of existing issues has finished
+	Backfilled bool               `json:"backfilled"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	Enabled    bool               `json:"enabled"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// LastError Why the last pass failed; null when it succeeded
+	LastError    *string    `json:"lastError,omitempty"`
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
+	// Repository owner/name
+	Repository string `json:"repository"`
+
+	// RootPageId Parent page of the synced issue pages; null until the first sync
+	RootPageId *openapi_types.UUID `json:"rootPageId,omitempty"`
+
+	// SyncUserId GitHub-originated edits are attributed to this user
+	SyncUserId openapi_types.UUID `json:"syncUserId"`
+
+	// WebhookSecret Secret for the webhook (Content type must be application/json)
+	WebhookSecret string `json:"webhookSecret"`
+
+	// WebhookUrl Payload URL to register in the repository's webhook settings
+	WebhookUrl  string             `json:"webhookUrl"`
+	WorkspaceId openapi_types.UUID `json:"workspaceId"`
+}
+
+// GithubIssueRef defines model for GithubIssueRef.
+type GithubIssueRef struct {
+	Number int                `json:"number"`
+	PageId openapi_types.UUID `json:"pageId"`
+
+	// Repository owner/name
+	Repository string           `json:"repository"`
+	State      GithubIssueState `json:"state"`
+	Url        string           `json:"url"`
+}
+
+// GithubIssueState defines model for GithubIssueState.
+type GithubIssueState string
+
 // Graph defines model for Graph.
 type Graph struct {
 	Edges []struct {
@@ -460,11 +521,29 @@ type PageContent struct {
 type PageDetail struct {
 	// Breadcrumbs Ancestors from root down to the parent (excludes the page itself); only ancestors the caller can view
 	Breadcrumbs []PageRef `json:"breadcrumbs"`
-	IsFavorite  bool      `json:"isFavorite"`
+
+	// Github The GitHub issue a page is synced with, and how the sync is doing
+	Github     *PageGithub `json:"github,omitempty"`
+	IsFavorite bool        `json:"isFavorite"`
 
 	// LastEditedBy Minimal public user info (never includes email)
 	LastEditedBy *UserRef    `json:"lastEditedBy,omitempty"`
 	Page         PageSummary `json:"page"`
+}
+
+// PageGithub The GitHub issue a page is synced with, and how the sync is doing
+type PageGithub struct {
+	ConnectionId openapi_types.UUID `json:"connectionId"`
+
+	// Error Set while the last attempt to sync this page failed
+	Error        *string   `json:"error,omitempty"`
+	LastSyncedAt time.Time `json:"lastSyncedAt"`
+	Number       int       `json:"number"`
+
+	// Repository owner/name
+	Repository string           `json:"repository"`
+	State      GithubIssueState `json:"state"`
+	Url        string           `json:"url"`
 }
 
 // PagePermissions defines model for PagePermissions.
@@ -614,6 +693,9 @@ type WorkspaceRole string
 // FileId defines model for FileId.
 type FileId = openapi_types.UUID
 
+// GithubConnectionId defines model for GithubConnectionId.
+type GithubConnectionId = openapi_types.UUID
+
 // PageId defines model for PageId.
 type PageId = openapi_types.UUID
 
@@ -746,6 +828,14 @@ type UpdateCommentJSONBody struct {
 	Body string `json:"body"`
 }
 
+// UpdateGithubConnectionJSONBody defines parameters for UpdateGithubConnection.
+type UpdateGithubConnectionJSONBody struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Token Write-only
+	Token *string `json:"token,omitempty"`
+}
+
 // UpdatePageJSONBody defines parameters for UpdatePage.
 type UpdatePageJSONBody struct {
 	Cover *string `json:"cover,omitempty"`
@@ -768,6 +858,11 @@ type CreateCommentThreadJSONBody struct {
 // DuplicatePageJSONBody defines parameters for DuplicatePage.
 type DuplicatePageJSONBody struct {
 	IncludeSubpages *bool `json:"includeSubpages,omitempty"`
+}
+
+// SetGithubIssueStateJSONBody defines parameters for SetGithubIssueState.
+type SetGithubIssueStateJSONBody struct {
+	State GithubIssueState `json:"state"`
 }
 
 // MovePageJSONBody defines parameters for MovePage.
@@ -835,6 +930,15 @@ type UploadFileMultipartBody struct {
 type ImportZipMultipartBody struct {
 	File     openapi_types.File  `json:"file"`
 	ParentId *openapi_types.UUID `json:"parentId,omitempty"`
+}
+
+// CreateGithubConnectionJSONBody defines parameters for CreateGithubConnection.
+type CreateGithubConnectionJSONBody struct {
+	// Repository owner/name or a github.com URL
+	Repository string `json:"repository"`
+
+	// Token Fine-grained or classic personal access token with read/write access to the repository issues. Write-only.
+	Token string `json:"token"`
 }
 
 // CreateInviteJSONBody defines parameters for CreateInvite.
@@ -921,6 +1025,9 @@ type ReplyToThreadJSONRequestBody ReplyToThreadJSONBody
 // UpdateCommentJSONRequestBody defines body for UpdateComment for application/json ContentType.
 type UpdateCommentJSONRequestBody UpdateCommentJSONBody
 
+// UpdateGithubConnectionJSONRequestBody defines body for UpdateGithubConnection for application/json ContentType.
+type UpdateGithubConnectionJSONRequestBody UpdateGithubConnectionJSONBody
+
 // UpdatePageJSONRequestBody defines body for UpdatePage for application/json ContentType.
 type UpdatePageJSONRequestBody UpdatePageJSONBody
 
@@ -929,6 +1036,9 @@ type CreateCommentThreadJSONRequestBody CreateCommentThreadJSONBody
 
 // DuplicatePageJSONRequestBody defines body for DuplicatePage for application/json ContentType.
 type DuplicatePageJSONRequestBody DuplicatePageJSONBody
+
+// SetGithubIssueStateJSONRequestBody defines body for SetGithubIssueState for application/json ContentType.
+type SetGithubIssueStateJSONRequestBody SetGithubIssueStateJSONBody
 
 // MovePageJSONRequestBody defines body for MovePage for application/json ContentType.
 type MovePageJSONRequestBody MovePageJSONBody
@@ -959,6 +1069,9 @@ type UploadFileMultipartRequestBody UploadFileMultipartBody
 
 // ImportZipMultipartRequestBody defines body for ImportZip for multipart/form-data ContentType.
 type ImportZipMultipartRequestBody ImportZipMultipartBody
+
+// CreateGithubConnectionJSONRequestBody defines body for CreateGithubConnection for application/json ContentType.
+type CreateGithubConnectionJSONRequestBody CreateGithubConnectionJSONBody
 
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody CreateInviteJSONBody
@@ -1067,6 +1180,15 @@ type ServerInterface interface {
 	// GetInstanceInfo Public instance info (needs setup? signup policy? OIDC?)
 	// (GET /instance/info)
 	GetInstanceInfo(w http.ResponseWriter, r *http.Request)
+	// DeleteGithubConnection Owner/admin only. Disconnects the repository. Synced pages stay as ordinary pages; nothing is deleted on GitHub.
+	// (DELETE /integrations/github/{connectionId})
+	DeleteGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId)
+	// UpdateGithubConnection Owner/admin only. Pause or resume the sync, or replace the token (the caller then becomes the user GitHub-originated edits are attributed to).
+	// (PATCH /integrations/github/{connectionId})
+	UpdateGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId)
+	// SyncGithubConnection Owner/admin only. Schedules an immediate sync pass.
+	// (POST /integrations/github/{connectionId}/sync)
+	SyncGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId)
 	// PurgePage Permanently delete an archived page and its subtree (needs `full`)
 	// (DELETE /pages/{pageId})
 	PurgePage(w http.ResponseWriter, r *http.Request, pageId PageId)
@@ -1106,6 +1228,9 @@ type ServerInterface interface {
 
 	// (PUT /pages/{pageId}/favorite)
 	AddFavorite(w http.ResponseWriter, r *http.Request, pageId PageId)
+	// SetGithubIssueState Closes or reopens the GitHub issue behind a synced page. Needs `edit` on the page.
+	// (PUT /pages/{pageId}/github/state)
+	SetGithubIssueState(w http.ResponseWriter, r *http.Request, pageId PageId)
 	// MovePage Reparent/reorder. Needs `edit` on the page and on the destination parent. Omit afterId/beforeId to append.
 	// (POST /pages/{pageId}/move)
 	MovePage(w http.ResponseWriter, r *http.Request, pageId PageId)
@@ -1177,12 +1302,21 @@ type ServerInterface interface {
 	// UploadFile Upload an image/file (multipart). Needs `edit` on `pageId` when given, else workspace membership (non-guest).
 	// (POST /workspaces/{workspaceId}/files)
 	UploadFile(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
+	// ListGithubIssues Every synced page the caller can view with its issue number. Powers `[[#123]]` in the page picker.
+	// (GET /workspaces/{workspaceId}/github-issues)
+	ListGithubIssues(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
 	// GetGraph Link graph of pages the caller can view (edges only between visible nodes)
 	// (GET /workspaces/{workspaceId}/graph)
 	GetGraph(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
 	// ImportZip Import a zip of Markdown files (Obsidian vault compatible). Runs async. Needs `edit` on parentId (or workspace membership for top level).
 	// (POST /workspaces/{workspaceId}/import)
 	ImportZip(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
+	// ListGithubConnections Owner/admin only. The repositories synced with this workspace (never includes the token).
+	// (GET /workspaces/{workspaceId}/integrations/github)
+	ListGithubConnections(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
+	// CreateGithubConnection Owner/admin only. Connects a repository and schedules the initial import of its issues. The token is checked against GitHub before anything is stored.
+	// (POST /workspaces/{workspaceId}/integrations/github)
+	CreateGithubConnection(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
 	// ListInvites Owner/admin only. Pending (unused, unexpired) invites.
 	// (GET /workspaces/{workspaceId}/invites)
 	ListInvites(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId)
@@ -1393,6 +1527,24 @@ func (_ Unimplemented) GetInstanceInfo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// DeleteGithubConnection Owner/admin only. Disconnects the repository. Synced pages stay as ordinary pages; nothing is deleted on GitHub.
+// (DELETE /integrations/github/{connectionId})
+func (_ Unimplemented) DeleteGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateGithubConnection Owner/admin only. Pause or resume the sync, or replace the token (the caller then becomes the user GitHub-originated edits are attributed to).
+// (PATCH /integrations/github/{connectionId})
+func (_ Unimplemented) UpdateGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SyncGithubConnection Owner/admin only. Schedules an immediate sync pass.
+// (POST /integrations/github/{connectionId}/sync)
+func (_ Unimplemented) SyncGithubConnection(w http.ResponseWriter, r *http.Request, connectionId GithubConnectionId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // PurgePage Permanently delete an archived page and its subtree (needs `full`)
 // (DELETE /pages/{pageId})
 func (_ Unimplemented) PurgePage(w http.ResponseWriter, r *http.Request, pageId PageId) {
@@ -1464,6 +1616,12 @@ func (_ Unimplemented) RemoveFavorite(w http.ResponseWriter, r *http.Request, pa
 
 // (PUT /pages/{pageId}/favorite)
 func (_ Unimplemented) AddFavorite(w http.ResponseWriter, r *http.Request, pageId PageId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetGithubIssueState Closes or reopens the GitHub issue behind a synced page. Needs `edit` on the page.
+// (PUT /pages/{pageId}/github/state)
+func (_ Unimplemented) SetGithubIssueState(w http.ResponseWriter, r *http.Request, pageId PageId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1600,6 +1758,12 @@ func (_ Unimplemented) UploadFile(w http.ResponseWriter, r *http.Request, worksp
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListGithubIssues Every synced page the caller can view with its issue number. Powers `[[#123]]` in the page picker.
+// (GET /workspaces/{workspaceId}/github-issues)
+func (_ Unimplemented) ListGithubIssues(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetGraph Link graph of pages the caller can view (edges only between visible nodes)
 // (GET /workspaces/{workspaceId}/graph)
 func (_ Unimplemented) GetGraph(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
@@ -1609,6 +1773,18 @@ func (_ Unimplemented) GetGraph(w http.ResponseWriter, r *http.Request, workspac
 // ImportZip Import a zip of Markdown files (Obsidian vault compatible). Runs async. Needs `edit` on parentId (or workspace membership for top level).
 // (POST /workspaces/{workspaceId}/import)
 func (_ Unimplemented) ImportZip(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListGithubConnections Owner/admin only. The repositories synced with this workspace (never includes the token).
+// (GET /workspaces/{workspaceId}/integrations/github)
+func (_ Unimplemented) ListGithubConnections(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateGithubConnection Owner/admin only. Connects a repository and schedules the initial import of its issues. The token is checked against GitHub before anything is stored.
+// (POST /workspaces/{workspaceId}/integrations/github)
+func (_ Unimplemented) CreateGithubConnection(w http.ResponseWriter, r *http.Request, workspaceId WorkspaceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2343,6 +2519,84 @@ func (siw *ServerInterfaceWrapper) GetInstanceInfo(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteGithubConnection operation middleware
+func (siw *ServerInterfaceWrapper) DeleteGithubConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "connectionId" -------------
+	var connectionId GithubConnectionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectionId", chi.URLParam(r, "connectionId"), &connectionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteGithubConnection(w, r, connectionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateGithubConnection operation middleware
+func (siw *ServerInterfaceWrapper) UpdateGithubConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "connectionId" -------------
+	var connectionId GithubConnectionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectionId", chi.URLParam(r, "connectionId"), &connectionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateGithubConnection(w, r, connectionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncGithubConnection operation middleware
+func (siw *ServerInterfaceWrapper) SyncGithubConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "connectionId" -------------
+	var connectionId GithubConnectionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectionId", chi.URLParam(r, "connectionId"), &connectionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncGithubConnection(w, r, connectionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PurgePage operation middleware
 func (siw *ServerInterfaceWrapper) PurgePage(w http.ResponseWriter, r *http.Request) {
 
@@ -2688,6 +2942,32 @@ func (siw *ServerInterfaceWrapper) AddFavorite(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddFavorite(w, r, pageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetGithubIssueState operation middleware
+func (siw *ServerInterfaceWrapper) SetGithubIssueState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "pageId" -------------
+	var pageId PageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pageId", chi.URLParam(r, "pageId"), &pageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetGithubIssueState(w, r, pageId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3286,6 +3566,32 @@ func (siw *ServerInterfaceWrapper) UploadFile(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListGithubIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListGithubIssues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", chi.URLParam(r, "workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGithubIssues(w, r, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGraph operation middleware
 func (siw *ServerInterfaceWrapper) GetGraph(w http.ResponseWriter, r *http.Request) {
 
@@ -3329,6 +3635,58 @@ func (siw *ServerInterfaceWrapper) ImportZip(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportZip(w, r, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGithubConnections operation middleware
+func (siw *ServerInterfaceWrapper) ListGithubConnections(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", chi.URLParam(r, "workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGithubConnections(w, r, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateGithubConnection operation middleware
+func (siw *ServerInterfaceWrapper) CreateGithubConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceId" -------------
+	var workspaceId WorkspaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceId", chi.URLParam(r, "workspaceId"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateGithubConnection(w, r, workspaceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3957,6 +4315,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/workspaces/{workspaceId}/invites/{inviteId}", wrapper.RevokeInvite)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/workspaces/{workspaceId}/integrations/github", wrapper.ListGithubConnections)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/workspaces/{workspaceId}/integrations/github", wrapper.CreateGithubConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/workspaces/{workspaceId}/github-issues", wrapper.ListGithubIssues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/integrations/github/{connectionId}", wrapper.DeleteGithubConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/integrations/github/{connectionId}", wrapper.UpdateGithubConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/integrations/github/{connectionId}/sync", wrapper.SyncGithubConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/pages/{pageId}/github/state", wrapper.SetGithubIssueState)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/workspaces/{workspaceId}/pages", wrapper.ListPages)
 	})
 	r.Group(func(r chi.Router) {
@@ -4097,143 +4476,160 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"SxaAc36zaWDuW+Y6tfsP9/8vAAD//w==",
+	"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",
+	"4TyzMdvuW6YbuvOk4Ly7+3j3/wIAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

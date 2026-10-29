@@ -62,6 +62,52 @@ type Favorite struct {
 	CreatedAt time.Time
 }
 
+type GithubCommentLink struct {
+	CommentID       uuid.UUID
+	ConnectionID    uuid.UUID
+	GithubCommentID *int64
+	Origin          string
+	RemoteUpdatedAt *time.Time
+	BodyHash        string
+}
+
+type GithubConnection struct {
+	ID               uuid.UUID
+	WorkspaceID      uuid.UUID
+	Owner            string
+	Repo             string
+	TokenEnc         []byte
+	WebhookSecretEnc []byte
+	SyncUserID       uuid.UUID
+	RootPageID       *uuid.UUID
+	Enabled          bool
+	IssuesSince      *time.Time
+	CommentsSince    *time.Time
+	BackfilledAt     *time.Time
+	SyncRequestedAt  *time.Time
+	LastSyncedAt     *time.Time
+	LastError        *string
+	LastErrorAt      *time.Time
+	CreatedAt        time.Time
+}
+
+type GithubIssueLink struct {
+	PageID              uuid.UUID
+	ConnectionID        uuid.UUID
+	IssueNumber         int32
+	HtmlUrl             string
+	BaseTitle           string
+	BaseState           string
+	BaseLocalBodyHash   string
+	BaseRemoteBodyHash  string
+	RemoteUpdatedAt     time.Time
+	SyncedPageUpdatedAt time.Time
+	CommentThreadID     *uuid.UUID
+	LastSyncedAt        time.Time
+	SyncError           *string
+	SyncErrorAt         *time.Time
+}
+
 type ImportJob struct {
 	ID           uuid.UUID
 	WorkspaceID  uuid.UUID

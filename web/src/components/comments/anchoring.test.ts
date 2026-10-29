@@ -1,5 +1,6 @@
 import type { CommentThread } from "@hostidian/api-types";
 import { describe, expect, it } from "vitest";
+import { GITHUB_THREAD_BLOCK_ID } from "@/lib/github";
 import {
   badgeCount,
   badgeIsResolved,
@@ -86,6 +87,18 @@ describe("groupThreads", () => {
     const shown = groupThreads([open, done], order, { showResolved: true });
     expect(shown.visible).toHaveLength(2);
     expect(shown.visible[1]!.resolved).toBe(true);
+  });
+
+  it("never flags the GitHub discussion as detached and pins it above every block", () => {
+    const first = thread({ blockId: "b1" });
+    const github = thread({ blockId: GITHUB_THREAD_BLOCK_ID });
+    const lost = thread({ blockId: "deleted" });
+    const g = groupThreads([first, lost, github], order, { showResolved: false });
+    expect(g.visible.map((v) => v.thread.id)).toEqual([github.id, first.id, lost.id]);
+    expect(g.detached.map((v) => v.thread.id)).toEqual([lost.id]);
+    // also before the editor has reported its blocks
+    const early = groupThreads([first, github], null, { showResolved: false });
+    expect(early.visible[0]!.thread.id).toBe(github.id);
   });
 
   it("marks optimistic threads as pending", () => {

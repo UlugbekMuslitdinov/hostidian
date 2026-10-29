@@ -52,7 +52,7 @@ All settings live in `.env` (template: [`.env.example`](../.env.example)). Compo
 | `DATABASE_URL` | built by `gen-env.sh` | api, collab | Connection string; host is `postgres` inside Compose. If you leave it empty, Compose builds it from the `POSTGRES_*` values. Set it to use an external database. |
 | `COLLAB_JWT_SECRET` | generated | api, collab | Signs the short-lived collab tokens (api to browser to collab). |
 | `INTERNAL_TOKEN` | generated | api, collab | Bearer token for api and collab calling each other. |
-| `APP_SECRET` | generated | api | Signs OIDC state/nonce cookies. |
+| `APP_SECRET` | generated | api | Signs OIDC state/nonce cookies and encrypts the GitHub tokens stored by [GitHub sync](github-sync.md). |
 | `API_ADDR` | `:8080` | api | Public API listener (served under `/api`). |
 | `INTERNAL_ADDR` | `:8081` | api | Internal listener. Never publish it. |
 | `COLLAB_INTERNAL_URL` | `http://collab:1235` | api | Where the API reaches the collab internal port. |
@@ -335,7 +335,7 @@ and use `docker compose pull && docker compose up -d`.
 ## Security notes
 
 - **Internal endpoints.** `api:8081` and `collab:1235` carry service-to-service calls authenticated with `INTERNAL_TOKEN`. They are not published, and Caddy answers 404 to any path starting with `/internal` (also `/api/internal*` and `/collab/internal*`). If you add your own proxy in front, forward only to Caddy and never expose those ports.
-- **Secrets.** `.env` is created with mode 600 and is git-ignored. Rotating `COLLAB_JWT_SECRET`, `INTERNAL_TOKEN` or `APP_SECRET` is safe: edit `.env` and run `docker compose up -d`. Sessions live in the database, so nobody is signed out; open editors reconnect and in-flight SSO logins have to be retried. Changing `POSTGRES_PASSWORD` in `.env` does **not** change the password inside an existing database; run `ALTER USER` as well.
+- **Secrets.** `.env` is created with mode 600 and is git-ignored. Rotating `COLLAB_JWT_SECRET` or `INTERNAL_TOKEN` is safe: edit `.env` and run `docker compose up -d`. Rotating `APP_SECRET` is too, with one catch: tokens stored for [GitHub sync](github-sync.md) can no longer be decrypted, so an owner/admin has to use *Replace token* on each connection. Sessions live in the database, so nobody is signed out; open editors reconnect and in-flight SSO logins have to be retried. Changing `POSTGRES_PASSWORD` in `.env` does **not** change the password inside an existing database; run `ALTER USER` as well.
 - **Containers.** The API, collab and web containers run as non-root users with all Linux capabilities dropped and `no-new-privileges`. Postgres is on an internal network without internet access.
 - **Browser protections.** Caddy adds `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`, a minimal `Permissions-Policy` and HSTS on real HTTPS domains. Mutating requests and WebSocket/SSE upgrades are checked against `PUBLIC_URL` / `ALLOWED_ORIGINS`.
 - **Follow-up.** A strict Content-Security-Policy is deliberately not set yet: the Next.js inline bootstrap scripts would need per-request nonces, which conflicts with the static, offline-capable app shell. Only the non-script directives (frame-ancestors, base-uri, form-action, object-src) are enforced for now.

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { CommentsProvider } from "@/components/comments/comments-context";
 import { CommentsDock } from "@/components/comments/comments-dock";
 import { ConnectionIndicator } from "@/components/editor/connection-indicator";
+import { GithubBar } from "@/components/github/github-bar";
 import { PageEditor } from "@/components/editor/page-editor";
 import { TopBar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usePageActions } from "@/hooks/use-page-actions";
 import { pageDetailOptions } from "@/lib/api/queries";
 import { hasStatus, isNetworkError } from "@/lib/api/error";
-import { canComment, canEdit } from "@/lib/permissions";
+import { canComment, canEdit, canManageWorkspace } from "@/lib/permissions";
 import { formatRelative, useNow } from "@/lib/time";
 import { AppLink } from "@/lib/nav";
 import { pageTitle, workspaceHref } from "@/lib/utils";
@@ -80,7 +81,7 @@ export function PageView({ pageId }: { pageId: string }) {
 function PageContent({ detail }: { detail: PageDetail }) {
   const actions = usePageActions();
   const now = useNow();
-  const { workspace } = useWorkspace();
+  const { workspace, role: workspaceRole } = useWorkspace();
   const { page } = detail;
   useLinkRefresh(workspace.id);
   useEffect(() => {
@@ -128,6 +129,15 @@ function PageContent({ detail }: { detail: PageDetail }) {
                 onChangeIcon={(icon) => actions.updateMeta(page.id, { icon })}
                 onChangeCover={(cover) => actions.updateMeta(page.id, { cover })}
               />
+
+              {detail.github ? (
+                <GithubBar
+                  pageId={page.id}
+                  github={detail.github}
+                  canEdit={editable}
+                  canManage={canManageWorkspace(workspaceRole)}
+                />
+              ) : null}
 
               <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <p className="min-w-0 truncate">

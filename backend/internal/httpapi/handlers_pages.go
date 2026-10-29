@@ -122,6 +122,14 @@ func (s *Server) GetPage(w http.ResponseWriter, r *http.Request, pageId gen.Page
 		s.writeError(w, r, err)
 		return
 	}
+	if svc := githubSync(s); svc != nil {
+		// Best effort: a failed lookup must not break opening the page.
+		if link, err := svc.PageLink(r.Context(), pageId); err != nil {
+			s.Log.Warn("github link lookup", "page", pageId, "err", err)
+		} else {
+			detail.Github = toGenPageGithub(link)
+		}
+	}
 	writeJSON(w, http.StatusOK, detail)
 }
 
